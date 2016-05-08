@@ -1,0 +1,42 @@
+.f24 { font-size: 24px; }
+.f20 { font-size: 20px; }
+.f16 { font-size: 16px; }
+.f14 { font-size: 14px; }
+.f12 { font-size: 12px; }
+
+.p24 { padding: 24px; }
+.p16 { padding: 16px; }
+.p8 { padding: 8px; }
+
+.selected-state {
+	background-color: rgba(0, 0, 0, 0.1);
+}
+
+md-card table {
+	border-collapse: collapse;
+	border: 1px solid grey;
+	width: 100%;
+}
+
+md-card th {
+	border: 1px solid grey;
+	padding: 4px;
+}
+
+md-card td {
+	border: 1px solid grey;
+	padding: 4px;
+}
+
+.md-card-sample {
+	max-width: 900px;
+	min-width: 450px;
+	width: 100%;
+	height: 500px;
+}
+
+md-card .sample-output {
+	border: solid 1px grey;
+	height: 300px;
+	overflow: auto;
+}

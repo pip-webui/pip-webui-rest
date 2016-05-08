@@ -1,0 +1,141 @@
+<div layout="column" layout-fill layout-align="start start" ng-controller="CacheController">
+
+    <h2 class="bm0">Cache</h2>
+
+
+    <md-card layout="column" class="md-card-sample" flex ng-controller="SettingsCacheController">
+        <md-progress-linear md-mode="indeterminate" class="top" ng-show="processing">
+        </md-progress-linear>
+
+        <md-card-content >
+            <h3 class="bm0">Settings Cache: {{titleArray[titleIndex]}}</h3>
+            <div flex class="sample-output p8">
+                <pre>{{ showedObject | json:4 }}</pre>
+            </div>
+        </md-card-content>
+        <md-card-actions >
+            <div layout="row" layout-align="end center">
+                <md-button class="md-raised md-primary"
+                           ng-disabled="processing"
+                           ng-click="clearSettingsCache()">
+                    Clear cache
+                </md-button>
+                <md-button class="md-raised md-primary"
+                           ng-disabled="processing"
+                           ng-click="showSettingsCache()">
+                    Show cache
+                </md-button>
+                <md-button class="md-raised md-primary lm10"
+                           ng-disabled="processing || !settigsCacheLoaded"
+                           ng-click="showSettings1()">
+                    Show S1
+                </md-button>
+                <md-button class="md-raised md-primary lm10"
+                           ng-disabled="processing || !settigsCacheLoaded"
+                           ng-click="showSettings2()">
+                    Show S2
+                </md-button>
+                <md-button class="md-raised md-primary lm10"
+                           ng-disabled="processing || !settigsCacheLoaded"
+                           ng-click="saveToCacheSettings1()">
+                    S1 to cache
+                </md-button>
+                <md-button class="md-raised md-primary lm10"
+                           ng-disabled="processing || !settigsCacheLoaded"
+                           ng-click="saveToCacheSettings2()">
+                    S2 to cache
+                </md-button>
+            </div>
+            <div layout="row" layout-align="end center">
+                <md-button class="md-raised md-primary"
+                           ng-disabled="processing"
+                           ng-click="loadSettingsCache()">
+                    Load from server
+                </md-button>
+                <md-button class="md-raised md-primary lm10"
+                           ng-disabled="processing || !settigsCacheLoaded"
+                           ng-click="saveSettings()">
+                    Save
+                </md-button>
+                <md-button class="md-raised md-primary lm10"
+                           ng-disabled="processing || !settigsCacheLoaded"
+                           ng-click="resetSettings()">
+                    Reset
+                </md-button>
+            </div>
+        </md-card-actions>
+    </md-card>
+
+    <!--<md-card layout="column" class="md-card-sample" flex>-->
+        <!--<md-progress-linear md-mode="indeterminate" class="top" ng-show="processing">-->
+        <!--</md-progress-linear>-->
+        <!--<md-card-content>-->
+            <!--<h3 class="bm0">General</h3>-->
+            <!--<div layout="row" layout-align="end end" class="tm20">-->
+                <!--<md-button class="md-raised md-primary" ng-disabled="processing">-->
+                    <!--Show cache-->
+                <!--</md-button>-->
+                <!--<md-button class="md-raised md-primary lm10" ng-disabled="processing">-->
+                    <!--Clear cache-->
+                <!--</md-button>-->
+            <!--</div>-->
+            <!--<h3 class="bm0">Areas && Goals collections</h3>-->
+            <!--<div layout="row" layout-align="end end" class="tm20">-->
+                <!--<md-button class="md-raised md-primary lm10" ng-disabled="processing">-->
+                    <!--Store to cache-->
+                <!--</md-button>-->
+                <!--<md-button class="md-raised md-primary lm10" ng-disabled="processing">-->
+                    <!--Retrieve from cache-->
+                <!--</md-button>-->
+                <!--<md-button class="md-raised md-primary lm10" ng-disabled="processing">-->
+                    <!--Retrieve or load-->
+                <!--</md-button>-->
+                <!--<md-button class="md-raised md-primary lm10" ng-disabled="processing">-->
+                    <!--Remove from cache-->
+                <!--</md-button>-->
+            <!--</div>-->
+            <!--<h3 class="bm0">Areas && Goals item</h3>-->
+            <!--<div layout="row" layout-align="end end" class="tm20">-->
+                <!--<md-button class="md-raised md-primary lm10" ng-disabled="processing">-->
+                    <!--Add item-->
+                <!--</md-button>-->
+                <!--<md-button class="md-raised md-primary lm10" ng-disabled="processing">-->
+                    <!--Update item-->
+                <!--</md-button>-->
+                <!--<md-button class="md-raised md-primary lm10" ng-disabled="processing">-->
+                    <!--Remove item-->
+                <!--</md-button>-->
+            <!--</div>-->
+            <!--<h3 class="bm0">Settings</h3>-->
+            <!--<div layout="row" layout-align="end end" class="tm20">-->
+                <!--<md-button class="md-raised md-primary lm10" ng-disabled="processing">-->
+                    <!--Store permanent-->
+                <!--</md-button>-->
+                <!--<md-button class="md-raised md-primary lm10" ng-disabled="processing">-->
+                    <!--Add item-->
+                <!--</md-button>-->
+                <!--<md-button class="md-raised md-primary lm10" ng-disabled="processing">-->
+                    <!--Update item-->
+                <!--</md-button>-->
+                <!--<md-button class="md-raised md-primary lm10" ng-disabled="processing">-->
+                    <!--Remove item-->
+                <!--</md-button>-->
+            <!--</div>-->
+            <!--<h3 class="bm0">Session</h3>-->
+            <!--<div layout="row" layout-align="end end" class="tm20">-->
+                <!--<md-button class="md-raised md-primary lm10" ng-disabled="processing">-->
+                    <!--Store permanent-->
+                <!--</md-button>-->
+                <!--<md-button class="md-raised md-primary lm10" ng-disabled="processing">-->
+                    <!--Add item-->
+                <!--</md-button>-->
+                <!--<md-button class="md-raised md-primary lm10" ng-disabled="processing">-->
+                    <!--Update item-->
+                <!--</md-button>-->
+                <!--<md-button class="md-raised md-primary lm10" ng-disabled="processing">-->
+                    <!--Remove item-->
+                <!--</md-button>-->
+            <!--</div>-->
+        <!--</md-card-content>-->
+    <!--</md-card>-->
+</div>

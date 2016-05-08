@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html>
+<head lang="en">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <title>WebUI Framework. PipDevs Team</title>
+
+    <link rel="stylesheet" href="../lib/pip-webui-lib.css"/>
+
+    <style>
+        .pip-title > h1 {
+            margin-top: 20px;
+            margin-bottom: 5px;
+        }
+
+        .pip-title > div {
+            margin-bottom: 30px;
+        }
+
+        .pip-section > h2 {
+            margin-bottom: 5px;
+        }
+    </style>
+
+    <script src="../lib/pip-webui-lib.js"></script>
+
+    <script>
+        app = angular.module('app', ['ngMaterial']);
+    </script>
+</head>
+<body ng-app="app" layout="column" layout-align="start center">
+    <section>
+        <div class="pip-title">
+            <h1>WebUI Framework. PipDevs Team</h1>
+            <div>(c) Digital Living Software Corp.</div>
+        </div>
+
+        <section class="pip-section">
+            <h2>WEBUI-REST  Services</h2>
+            <ul>
+                <li><a href="rest_services/index.html#/auth">Authentication</a></li>
+                <li><a href="rest_services/index.html#/session">Session</a></li>
+                <li><a href="rest_services/index.html#/rest">Rest</a></li>
+                <li><a href="rest_services/index.html#/cache">Cache</a></li>
+            </ul>
+        </section>
+        <section class="pip-section">
+            <h2>REST API</h2>
+            <ul>
+                <li> Admin API
+                    <ul>
+
+                    </ul>
+                </li>
+                <li> Client API
+                    <ul>
+                        <li><a href="rest_api/index.html#/areas">Areas</a></li>
+                        <li><a href="rest_api/index.html#/goals">Goals</a></li>
+                        <li><a href="rest_api/index.html#/events">events</a></li>
+                        <li><a href="rest_api/index.html#/tasks">tasks</a></li>
+                        <li><a href="rest_api/index.html#/posts">posts</a></li>
+                        <li><a href="rest_api/index.html#/visions">visions</a></li>
+                        <li><a href="rest_api/index.html#/partners">partners</a></li>
+                        <li><a href="rest_api/index.html#/members">members</a></li>
+                    </ul>
+                </li>
+            </ul>
+        </section>
+
+        <section class="pip-section">
+            <h2>References</h2>
+            <ul>
+                <li><a href="https://material.angularjs.org/latest/#/">Angular Material Intro</a></li>
+                <li><a href="https://github.com/angular/material">Angular Material GitHub</a></li>
+                <li><a href="https://www.google.com/design/spec/material-design/introduction.html">Material Design Guidelines</a></li>
+                <li><a href="http://design.google.com">Google Design References</a></li>
+            </ul>
+        </section>
+    </section>
+</body>
+</html>

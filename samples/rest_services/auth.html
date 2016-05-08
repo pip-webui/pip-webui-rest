@@ -1,0 +1,138 @@
+<div layout="column" layout-fill layout-align="start start" >
+
+    <h2 class="bm0">Authentication {{page}}</h2>
+
+    <div>
+        <md-button class="md-raised md-primary"
+                   ng-disabled="processing"
+                   ui-sref="auth"
+                   ng-hide="$state.name == 'signin'">
+            Main page (free access)
+        </md-button>
+        <md-button class="md-raised md-primary"
+                   ng-disabled="processing"
+                   ui-sref="first_page"
+                   ng-hide="$state.name == 'signin'">
+            First page (private access)
+        </md-button>
+        <md-button class="md-raised md-primary"
+                   ng-disabled="processing"
+                   ui-sref="second_page"
+                   ng-hide="$state.name == 'signin'">
+            Second page (private access)
+        </md-button>
+    </div>
+
+    <md-card layout="column" flex
+             class="md-card-sample"
+             ng-controller="AuthController"
+             ng-if="$state.name == 'auth'">
+        <md-progress-linear md-mode="indeterminate" class="top" ng-show="processing">
+        </md-progress-linear>
+
+        <md-card-content >
+            <h3 class="bm0">User: {{$user.name ? $user.name : 'No user logining'}}</h3>
+            <div flex class="sample-output p8">
+                <pre>{{ showedObject | json:4 }}</pre>
+            </div>
+        </md-card-content>
+        <md-card-actions >
+            <div layout="row" layout-align="end center">
+                <md-button class="md-raised md-primary"
+                           ng-disabled="processing"
+                           ng-click="signOut()">
+                    SignOut
+                </md-button>
+                <md-button class="md-raised md-primary"
+                           ng-disabled="processing"
+                           ui-sref="signin">
+                    SignIn page
+                </md-button>
+            </div>
+        </md-card-actions>
+    </md-card>
+
+    <md-card layout="column" flex
+             class="md-card-sample"
+             ng-controller="SigninController"
+             ng-if="$state.name == 'signin'">
+        <md-progress-linear md-mode="indeterminate" class="top" ng-show="processing">
+        </md-progress-linear>
+
+        <md-card-content layout="column" layout-align="center center">
+            <h3 class="bm0">Server Url: {{serverUrl}}</h3>
+            <h3 class="bm0">User Name: {{sampleAccount.name}}</h3>
+            <h3 class="bm0">User Email: {{sampleAccount.email}}</h3>
+            <md-button class="md-raised md-primary"
+                       ng-disabled="processing"
+                       ng-click="signIn()">
+                SignIn
+            </md-button>
+        </md-card-content>
+    </md-card>
+
+    <md-card layout="column"
+             class="md-card-sample" flex
+             ng-controller="FirstAuthController"
+             ng-if="$state.name == 'first_page'">
+        <md-progress-linear md-mode="indeterminate" class="top" ng-show="processing">
+        </md-progress-linear>
+
+        <md-card-content >
+            <h3 class="bm0">User: {{$user.name ? $user.name : 'No user logining'}}</h3>
+            <div flex class="sample-output p8">
+                <pre>{{ showedObject | json:4 }}</pre>
+            </div>
+        </md-card-content>
+        <!--<md-card-actions >-->
+            <!--<div layout="row" layout-align="end center">-->
+                <!--<md-button class="md-raised md-primary"-->
+                           <!--ng-disabled="processing"-->
+                           <!--ng-click="signIn()">-->
+                    <!--SignIn-->
+                <!--</md-button>-->
+                <!--<md-button class="md-raised md-primary"-->
+                           <!--ng-disabled="processing"-->
+                           <!--ng-click="signOut()">-->
+                    <!--SignOut-->
+                <!--</md-button>-->
+            <!--</div>-->
+        <!--</md-card-actions>-->
+    </md-card>
+
+    <md-card layout="column"
+             class="md-card-sample" flex
+             ng-controller="SecondAuthController"
+             ng-if="$state.name == 'second_page'">
+        <md-progress-linear md-mode="indeterminate" class="top" ng-show="processing">
+        </md-progress-linear>
+
+        <md-card-content >
+            <h3 class="bm0">User: {{$user.name ? $user.name : 'No user logining'}}</h3>
+            <div flex class="sample-output p8">
+                <pre>{{ showedObject | json:4 }}</pre>
+            </div>
+        </md-card-content>
+        <md-card-actions >
+            <div layout="row" layout-align="end center">
+                <md-button class="md-raised md-primary"
+                           ng-disabled="processing"
+                           ng-click="expired()">
+                    Session Expired
+                </md-button>
+                <md-button class="md-raised md-primary"
+                           ng-disabled="processing"
+                           ng-click="goToFirst()">
+                    Go to First
+                </md-button>
+                <md-button class="md-raised md-primary lm10"
+                           ng-disabled="processing"
+                           ng-click="onGetNotes()">
+                    Notes
+                </md-button>
+            </div>
+        </md-card-actions>
+    </md-card>
+
+
+</div>

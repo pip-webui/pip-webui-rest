@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html class="no-scroll">
+<head lang="en">
+    <meta charset="UTF-8">
+    <meta http-equiv="pragma" content="no-cache">
+    <meta http-equiv="cache-control" content="no-cache">
+    <meta http-equiv="expires" content="-1">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <title>REST API</title>
+
+    <link rel="stylesheet" href="../../lib/pip-webui-lib.css"/>
+    <link rel="stylesheet" href="../styles/styles.css"/>
+
+    <script src="../../lib/pip-webui-lib.js"></script>
+    <script src="../../lib/pip-webui-core.js"></script>
+    <script src="../../lib/pip-webui-test.js"></script>
+    <script src="../../dist/pip-webui-rest.js"></script>
+
+    <script src="index.js"></script>
+    <script src="areas.js"></script>
+    <script src="goals.js"></script>
+    <script src="entry.js"></script>
+</head>
+
+<body ng-app="appRestServices" ng-controller="AppController" layout="column">
+<md-toolbar>
+    <div class="md-toolbar-tools">
+        <md-button class="md-icon-button" aria-label="menu"
+                   ng-click="onToggleMenu()" hide-gt-sm>
+            <span class="icon-menu f20"></span>
+        </md-button>
+        <span>REST API Services</span>
+    </div>
+</md-toolbar>
+
+<div layout="row" flex>
+    <md-sidenav md-component-id="left" md-is-locked-open="$mdMedia('gt-sm')"
+                layout="column" class="md-whiteframe-z2 md-sidenav-left">
+        <md-list>
+            <md-list-item ng-repeat="contentItem in content"
+                          ng-click="onSwitchPage(contentItem.state)"
+                          ng-class="{ 'selected-state': isActiveState(contentItem.state) }">
+                <p ui-sref="{{contentItem.state}}">{{contentItem.title}}</p>
+            </md-list-item>
+        </md-list>
+    </md-sidenav>
+
+    <md-content id="content" flex class="p16">
+        <div ui-view></div>
+    </md-content>
+</div>
+</body>
+</html>

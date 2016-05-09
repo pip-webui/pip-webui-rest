@@ -95,7 +95,7 @@
                     params,
                     function(result) {
                         if (params.itemCollection)
-                            _.remove(params.itemCollection, 'id', result.id || (params.object || {}).id || (params.item || {}).id);
+                            _.remove(params.itemCollection, {id: result.id || (params.object || {}).id || (params.item || {}).id});
 
                         if (successCallback) successCallback(result);
                     },
@@ -126,7 +126,7 @@
                     params,
                     function(result) {
                         if (params.itemCollection && result) {
-                            var index = _.findIndex(params.itemCollection, 'id', result.id);
+                            var index = _.findIndex(params.itemCollection, {id: result.id});
                             if (index >= 0) params.itemCollection[index] = result;
                             else params.itemCollection.push(result);
                         }

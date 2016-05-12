@@ -1,1787 +1,4 @@
 /**
- * @file User access permissions service
- * @copyright Digital Living Software Corp. 2014-2016
- */
- 
- /* global _, angular */
-
-(function () {
-    'use strict';
-
-    var thisModule = angular.module('pipRest.Access', ['pipUtils', 'pipRest.Enums']);
-
-    thisModule.factory('pipAccess', ['pipUtils', 'pipEnums', function (pipUtils, pipEnums) {
-
-        function defaultAccess(account) {
-            // Clone and set default values
-            var user = _.defaults(
-                {
-                    // Fix id
-                    id: account.id || account._id,
-                    party_id: null,
-                    party_name: null,
-                    type: null,
-                    owner: false,
-                    manager: false,
-                    contributor: false,
-                    share_level: pipEnums.SHARE_LEVEL.WORLD
-                },
-                account
-            );
-    
-            delete user._id;
-    
-            return user;
-        };
-    
-        function fixAccess(user) {
-            // Owner acts as his own manager
-            user.manager = user.manager || user.owner;
-    
-            // Manager has contributor rights
-            user.contributor = user.contributor || user.manager;
-    
-            // Managers and contributors can access at private level
-            if (user.contributor)
-                user.share_level = pipEnums.SHARE_LEVEL.PRIVATE;
-    
-            return user;
-        }
-    
-        function overrideAccess(user, access) {
-            // Copy over override
-            user.party_id = access.party_id;
-            user.party_name = access.party_name;
-            user.type = access.type;
-            user.owner = !!access.owner;
-            user.manager = !!access.manager;
-            user.contributor = !!access.contributor;
-            user.share_level = access.share_level || pipEnums.SHARE_LEVEL.WORLD;
-    
-            // Party can be set as an object
-            if (access.party) {
-                user.party_id = access.party.id || access.party._id;
-                user.party_name = access.party.name;
-            }
-    
-            // Make access settings consistent and return
-            return fixAccess(user);
-        };
-    
-        function asOwner(account) {
-            // Skip if no account set
-            if (account == null) return undefined;
-    
-            // Construct default user
-            var user = defaultAccess(account);
-    
-            // Set owner access rights
-            user.party_id = user.id;
-            user.party_name = user.name;
-            user.type = null;
-            user.owner = true;
-            user.manager = true;
-            user.contributor = true;
-            user.share_level = pipEnums.SHARE_LEVEL.PRIVATE;
-    
-            return user;
-        };
-    
-        function toParty(account, party) {
-            // Skip if no account set
-            if (account == null) return undefined;
-    
-            // If no party set then assume owner access
-            if (party == null) return asOwner(account);
-    
-            var 
-                userId = account.id || account._id,
-                partyId = party.id || party._id || party,
-                partyName = party.name || account.name;
-    
-            // If user and party are the same then
-            if (userId == partyId) return asOwner(account);
-    
-            // Set default values
-            var user = defaultAccess(account);
-            user.party_id = partyId;
-            user.party_name = partyName;
-    
-            // Identify maximum access level
-            _.each(user.party_access, function (access) {
-                if (pipUtils.equalObjectIds(partyId, access.party_id)) {
-                    user.party_name = access.party_name;
-                    user.type = access.type;
-                    user.manager = user.manager || access.manager;
-                    user.contributor = user.contributor || access.contributor;
-                    user.share_level = Math.max(user.share_level, access.share_level);
-                }
-            });
-    
-            // Make access settings consistent and return
-            return fixAccess(user);
-        };
-    
-        // Can be used for testing
-        function override(account, access) {
-            // Skip if no account set
-            if (account == null) return undefined;
-    
-            // Set default values
-            var user = defaultAccess(account);
-    
-            // If no override return plain user
-            if (access) overrideAccess(user, access);
-    
-            return user;
-        };
-    
-        // Can be used for testing
-        function toPartyWithOverride(account, party, access) {
-            var user = toParty(account, party);
-    
-            // If no override return plain user
-            if (access) overrideAccess(user, access);
-    
-            return user;
-        };
-        
-        return {
-            asOwner: asOwner,
-            toParty: toParty,
-            override: override,
-            toPartyWithOverride: toPartyWithOverride
-        };
-    }]);
-
-})();
-
-/**
- * @file Application secure router
- * @copyright Digital Living Software Corp. 2014-2016
- */
- 
- /* global angular */
- 
-(function () {
-    'use strict';
-    
-    var thisModule = angular.module('pipRest.State', ['pipState', 'pipRest.Session', 'pipRest.Access', 'pipSessionCache']);
-
-    thisModule.config(
-        ['$locationProvider', '$httpProvider', function($locationProvider, $httpProvider) {
-            // Attach interceptor to react on unauthorized errors
-            $httpProvider.interceptors.push('pipAuthHttpResponseInterceptor');
-        }]
-    );
-
-    thisModule.run(
-        ['$rootScope', 'pipState', 'pipSession', 'pipAuthState', function($rootScope, pipState, pipSession, pipAuthState) {
-
-            // Intercept routes
-            $rootScope.$on('$stateChangeStart', stateChangeStart);
-            // Process unauthorized access error
-            $rootScope.$on('pipUnauthorizedRedirect', unauthorizedRedirect);
-            // Handle other errors
-            $rootScope.$on('pipMaintenanceError', maintenanceError);
-            $rootScope.$on('pipNoConnectionError', noConnectionError);
-            $rootScope.$on('pipMissingRouteError', missingRouteError);
-            $rootScope.$on('pipUnknownError', unknownError);
-
-            function stateChangeStart(event, toState, toParams, fromState, fromParams) {
-                // Implement redirect mechanism
-                if (pipAuthState.redirect(event, toState, toParams, $rootScope)) {
-                    return;
-                }
-
-                // todo apply in all tool
-                // If user is not authorized then switch to signin
-                if ((toState.auth  || toState.auth === undefined) && !pipSession.opened()) {
-                    event.preventDefault();
-
-                    var redirectTo = pipState.href(toState.name, toParams);
-
-                    // Remove hashtag
-                    if (redirectTo.length > 0 && redirectTo[0] == '#') {
-                        redirectTo = redirectTo.substring(1);
-                    }
-
-                    pipAuthState.goToSignin({ redirect_to: redirectTo, toState: toState, toParams: toParams});
-
-                    return;
-                }
-
-                // Signout and move to unauthorized page
-                if (toState.name == pipAuthState.signoutState()) {
-                    event.preventDefault();
-                    pipSession.signout();
-                    pipAuthState.goToUnauthorized({});
-                    return;
-                }
-
-                // Move user to authorized page
-                if (toState.name == pipAuthState.unauthorizedState()
-                    && pipSession.opened()) {
-
-                    event.preventDefault();
-                    pipAuthState.goToAuthorized({});
-                    return;
-                }
-            }
-
-            function unauthorizedRedirect(event, params) {
-                pipSession.close();
-                pipAuthState.goToSignin(params);
-            }
-
-            function maintenanceError(event, params) {
-                pipAuthState.goToErrors('errors_maintenance', params);
-            }
-
-            function noConnectionError(event, params) {
-                pipAuthState.goToErrors('errors_no_connection', params);
-            }
-
-            function missingRouteError(event, params) {
-                pipAuthState.goToErrors('errors_missing_route', params);
-            }
-
-            function unknownError(event, params) {
-                pipAuthState.goToErrors('errors_unknown', params);
-            }
-
-        }]
-    );
-
-    thisModule.factory('pipAuthHttpResponseInterceptor',
-        ['$q', '$location', '$rootScope', function ($q, $location, $rootScope) {
-            return {
-                response: function (response) {
-                    // When server sends Non-authenticated response
-                    if (response.status === 401) {
-                        console.error("Response 401");
-                    }                    
-                    return response || $q.when(response);
-                },
-                
-                responseError: function (rejection) {
-
-
-                    var toState = $rootScope.$state && $rootScope.$state.name ? $rootScope.$state.name : null,
-                        toParams = $rootScope.$state && $rootScope.$state.params ? $rootScope.$state.params : null;
-                    // When server sends Non-authenticated response
-                    switch (rejection.status) {
-                        case 401:
-                        case 440:
-                            console.error("Response Error 401", rejection);
-                            // Redirect to unauthorized state
-                            $rootScope.$emit('pipUnauthorizedRedirect', {
-                                redirect_to:  toState && toParams && toParams.redirect_to ? '': $location.url(),
-                                toState: toState,
-                                toParams: toParams
-                            });
-
-                            break;
-                        case 503:
-                             //available (maintenance)
-                            $rootScope.$emit('pipMaintenanceError', {
-                                error: rejection
-                            });
-
-                            console.error("errors_maintenance", rejection);
-                            break;
-                        case -1:
-                            //$rootScope.$emit('pipNoConnectionError', {
-                            //    error: rejection
-                            //});
-
-                            console.error("errors_no_connection", rejection);
-                            break;
-                        default:
-                            // unhandled error (internal)
-                            //var code = rejection.code || (rejection.data || {}).code || null;
-                            //
-                            //// if not our server error generate errorEvent
-                            //if (!code) {
-                            //    $rootScope.$emit('pipUnknownError', {
-                            //        error: rejection
-                            //    });
-                            //}
-
-                            console.error("errors_unknown", rejection);
-                            break;
-                    }
-
-                    return $q.reject(rejection);
-                }
-            }
-        }]
-    );
-
-    thisModule.provider('pipAuthState', ['pipStateProvider', function(pipStateProvider) {
-        // Configuration of redirected states
-        userResolver.$inject = ['pipSessionCache'];
-        partyResolver.$inject = ['pipSessionCache', '$stateParams'];
-        connectionResolver.$inject = ['pipSessionCache', '$stateParams'];
-        settingsResolver.$inject = ['pipSessionCache'];
-        var 
-            signinState = null,
-            signoutState = null,
-            authorizedState = '/',
-            unauthorizedState = '/';
-
-        this.signinState = setSigninState;
-        this.signoutState = setSignoutState;
-        this.authorizedState = setAuthorizedState;
-        this.unauthorizedState = setUnauthorizedState;
-
-        this.redirect = pipStateProvider.redirect;
-        this.state = stateOverride;
-
-        this.$get = ['pipState', function (pipState) {            
-            pipState.signinState = function() { return signinState; };
-            pipState.signoutState = function() { return signoutState; };
-            pipState.authorizedState = function() { return authorizedState; };            
-            pipState.unauthorizedState = function() { return unauthorizedState; };
-            
-            pipState.goToErrors = function(toState, params) {
-                if (toState == null)
-                    throw new Error('Error state was not defined');
-
-                pipState.go(toState, params);
-            };
-
-            pipState.goToSignin = function(params) {
-                if (signinState == null)
-                    throw new Error('Signin state was not defined');
-
-                pipState.go(signinState, params);
-            };
-
-            pipState.goToSignout = function(params) {
-                if (signoutState == null)
-                    throw new Error('Signout state was not defined');
-                    
-                pipState.go(signoutState, params);  
-            };
-
-            pipState.goToAuthorized = function(params) {
-                if (authorizedState == null)
-                    throw new Error('Authorized state was not defined');
-                                        
-                pipState.go(authorizedState, params);
-            };
-
-            pipState.goToUnauthorized = function(params) {
-                if (unauthorizedState == null)
-                    throw new Error('Unauthorized state was not defined');
-                    
-                pipState.go(unauthorizedState, params);  
-            };
-
-            return pipState;
-        }];
-
-        return;        
-        //--------------------------------
-
-        function setSigninState(newSigninState) {
-            if (newSigninState)
-                signinState = newSigninState;
-            return signinState;
-        }
-
-        function setSignoutState(newSignoutState) {
-            if (newSignoutState)
-                signoutState = newSignoutState;
-            return signoutState;
-        }
-
-        function setAuthorizedState(newAuthorizedState) {
-            if (newAuthorizedState)
-                authorizedState = newAuthorizedState;
-            return authorizedState;
-        }
-
-        function setUnauthorizedState(newUnauthorizedState) {
-            if (newUnauthorizedState)
-                unauthorizedState = newUnauthorizedState;
-            return unauthorizedState;
-        }
-
-        // Overriding state configuration in ui-router to add auth resolves
-        function stateOverride(stateName, stateConfig) {
-            if (stateName == null)
-                throw new Error('stateName cannot be null');
-            if (stateConfig == null)
-                throw new Error('stateConfig cannot be null');
-
-            // todo apply in all tool
-            if (stateConfig.auth || stateConfig.authenticate) {
-                stateConfig.resolve = stateConfig.resolve || {};
-
-                stateConfig.resolve.user = /* @ngInject */ userResolver;
-                stateConfig.resolve.party = /* @ngInject */ partyResolver;
-                stateConfig.resolve.connection = /* @ngInject */ connectionResolver;
-                stateConfig.resolve.setting = /* @ngInject */ settingsResolver;
-            }    
-
-            pipStateProvider.state(stateName, stateConfig);
-
-            return this;
-        }
-
-        function userResolver(pipSessionCache) {
-            return pipSessionCache.readUser();
-        }
-
-        function partyResolver(pipSessionCache, $stateParams) {
-            return pipSessionCache.readParty($stateParams);
-        }
-
-        function connectionResolver(pipSessionCache, $stateParams) {
-            return pipSessionCache.readConnection($stateParams);
-        }
-
-        function settingsResolver(pipSessionCache) {
-            return pipSessionCache.readSettings();
-        }
-
-    }]);
-
-})();
-/**
- * @file Rest API enumerations service
- * @copyright Digital Living Software Corp. 2014-2016
- */
- 
- /* global _, angular */
-
-(function () {
-    'use strict';
-
-    var thisModule = angular.module('pipRest.Enums', []);
-
-    thisModule.factory('pipEnums', function () {
-
-        var enums = {};
-    
-        // Converts enumeration values to string array
-        function enumToArray(obj) {
-            var result = [];
-    
-            for (var key in obj)
-                if (obj.hasOwnProperty(key))
-                    result.push(obj[key]);
-
-            return result;
-        };
-    
-        enums.SHARE_LEVEL = {
-            WORLD: 0, // Everyone
-            OUTER: 1, // Familiar
-            INNER: 2, // Trusted
-            PRIVATE: 3 // Private
-        };
-    
-        enums.URGENCY = {
-            LOW: 1,
-            NORMAL: 500,
-            HIGH: 1000,
-            MIN: 0,
-            MAX: 1000
-        };
-        enums.URGENCIES = enumToArray(enums.URGENCY);
-    
-        enums.IMPORTANCE = {
-            LOW: 1,
-            NORMAL: 500,
-            HIGH: 1000,
-            MIN: 0,
-            MAX: 1000
-        };
-        enums.IMPORTANCES = enumToArray(enums.IMPORTANCE);
-    
-        enums.CONFIDENTIALITY = {
-            PUBLIC: 0, // No sharing restrictions level - ANY, groups = yes, parties = yes
-            SENSITIVE: 1, // No public sharing - level >= OUTER, groups = yes, parties = yes
-            CLASSIFIED: 2, // Only selected parties - level = PRIVATE, groups = yes, parties = yes
-            SECRET: 3 // No sharing - level = PRIVATE, groups = no, parties = no
-        };
-        enums.CONFIDENTIALITIES = enumToArray(enums.CONFIDENTIALITY);
-    
-        enums.LEVEL = {
-            NONE: 0,
-            LOW: 1,
-            LOW_MEDIUM: 250,
-            MEDIUM: 500,
-            MEDIUM_HIGH: 750,
-            HIGH: 1000,
-            MIN: 0,
-            MAX: 1000
-        };
-    
-        enums.LANGUAGE = {
-            ENGLISH: 'en',
-            SPANISH: 'es',
-            PORTUGUESE: 'pt',
-            FRENCH: 'fr',
-            GERMAN: 'de',
-            RUSSIAN: 'ru'
-        };
-        enums.LANGUAGES = enumToArray(enums.LANGUAGE);
-    
-        enums.STAT_TYPE = {
-            DAILY: 'daily',
-            MONTHLY: 'monthly',
-            YEARLY: 'yearly',
-            TOTAL: 'total'
-        };
-        enums.STAT_TYPES = enumToArray(enums.STAT_TYPE);
-    
-        enums.STAT_BATCH_OPERATION = {
-            RECORD_SYSTEM_STATS: 'record system stats',
-            RECORD_PARTY_STATS: 'record party stats'
-        };
-    
-        enums.SERVER_TYPE = {
-            REALTIME_DB: 'r/t db master',
-            HISTORIAN_DB: 'db slave',
-            ANALYTICS: 'analytics',
-            BUSINESS_LOGIC: 'business logic',
-            REST_API: 'rest api',
-            STATIC_CONTENT: 'static content',
-            BACKUP_STORAGE: 'backup storage'
-        };
-        enums.SERVER_TYPES = enumToArray(enums.SERVER_TYPE);
-    
-        enums.SYSTEM_LOG_TYPE = {
-            INFO: 'info',
-            STOP: 'stop',
-            START: 'start',
-            RESTART: 'restart',
-            UPGRADE: 'upgrade',
-            MAINTENANCE: 'maintenance',
-            WARNING: 'warning',
-            ERROR: 'error'
-        };
-        enums.SYSTEM_LOG_TYPES = enumToArray(enums.SYSTEM_LOG_TYPE);
-    
-        enums.ACTIVITY_TYPE = {
-            SIGNUP: 'signup',
-            SIGNIN: 'signin',
-            PASSWORD_CHANGED: 'password changed',
-            PWD_RECOVERED: 'pwd recovered',
-            EMAIL_VERIFIED: 'email verified',
-            SETTINGS_CHANGED: 'settings changed',
-            PARTNERED: 'partnered',
-            TEAMED_UP: 'teamed up',
-            FOLLOWED: 'followed',
-            DISCONNECTED: 'disconnected',
-            CREATED: 'created',
-            UPDATED: 'updated',
-            DELETED: 'deleted',
-            ACCEPTED: 'accepted',
-            REJECTED: 'rejected',
-            JOINED: 'joined',
-            COMPLETED: 'completed',
-            CANCELED: 'canceled',
-            PROGRESS: 'progress',
-            POSTED: 'posted',
-            BUZZED: 'buzzed',
-            COMMENTED: 'commented',
-            CHEERED: 'cheered',
-            BOOED: 'booed'
-        };
-        enums.ACTIVITY_TYPES = enumToArray(enums.ACTIVITY_TYPE);
-    
-        enums.REFERENCE_TYPE = {
-            PARTY: 'party',
-            CONNECTION: 'connection',
-            CONTACT: 'contact',
-            MESSAGE: 'message',
-            NOTE: 'note',
-            AREA: 'area',
-            GOAL: 'goal',
-            EVENT: 'event',
-            VISION: 'vision',
-            COLLAGE: 'collage',
-            POST: 'post',
-            SUPPORT_CASE: 'support case',
-            ANNOUNCE: 'announce',
-            IMAGE_SET: 'image set',
-            FEEDBACK: 'feedback',
-            GUIDE: 'guide'
-        };
-        enums.REFERENCE_TYPES = enumToArray(enums.REFERENCE_TYPE);
-    
-        enums.CONTENT_TYPE = {
-            TEXT: 'text',
-            CHECKLIST: 'checklist',
-            LOCATION: 'location',
-            TIME: 'time',
-            PICTURES: 'pictures',
-            DOCUMENTS: 'documents'
-        };
-        enums.CONTENT_TYPES = enumToArray(enums.CONTENT_TYPE);
-    
-        enums.PARTY_TYPE = {
-            PERSON: 'person',
-            TEAM: 'team',
-            AGENT: 'agent'
-        };
-        enums.PARTY_TYPES = enumToArray(enums.PARTY_TYPE);
-    
-        enums.GENDER = {
-            MALE: 'male',
-            FEMALE: 'female',
-            NOT_SPECIFIED: 'n/s'
-        };
-        enums.GENDERS = enumToArray(enums.GENDER);
-    
-        enums.VISION_TYPE = {
-            OVERALL: 'overall',
-            ROLE: 'role',
-            MODEL: 'model',
-            TIME: 'time'
-        };
-        enums.VISION_TYPES = enumToArray(enums.VISION_TYPE);
-    
-        enums.AREA_TYPE = {
-            CATEGORY: 'category',
-            AREA: 'area'
-        };
-        enums.AREA_TYPES = enumToArray(enums.AREA_TYPE);
-    
-        enums.GOAL_TYPE = {
-            GOAL: 'goal',
-            OBJECTIVE: 'objective',
-            DREAM: 'dream',
-            //ASPIRATION: 'aspiration',
-            ACCOMPLISHMENT: 'accomplishment',
-            //CHORE: 'chore',
-            //HABIT: 'habit',
-            TASK: 'task',
-            ROUTINE: 'routine'
-        };
-        enums.GOAL_TYPES = enumToArray(enums.GOAL_TYPE);
-    
-        enums.PROCESS_NODE = {
-            START: 'start',
-            END: 'end',
-            EVENT: 'event',
-            AWAIT: 'await',
-            DECISION: 'decision',
-            ACTIVITY: 'activity'
-        };
-        enums.PROCESS_NODES = enumToArray(enums.PROCESS_NODE);
-    
-        enums.CALCULATION_METHOD = {
-            LAST_VALUE: 'last value',
-            SUM: 'sum',
-            MAX: 'max',
-            MIN: 'min',
-            AVERAGE: 'average'
-        };
-        enums.CALCULATION_METHODS = enumToArray(enums.CALCULATION_METHOD);
-    
-        enums.EXECUTION_STATUS = {
-            NEW: 'new',
-            ASSIGNED: 'assigned',
-            IN_PROGRESS: 'in progress',
-            VERIFYING: 'verifying',
-            ON_HOLD: 'on hold',
-            CANCELED: 'canceled',
-            COMPLETED: 'completed'
-        };
-        enums.EXECUTION_STATUSES = enumToArray(enums.EXECUTION_STATUS);
-    
-        enums.CONTRIBUTOR_ROLE = {
-            UNDEFINED: 'undefined',
-            RESPONSIBLE: 'responsible',
-            ACCOUNTABLE: 'accountable',
-            CONSULTED: 'consulted',
-            INFORMED: 'informed'
-        };
-        enums.CONSTRIBUTOR_ROLES = enumToArray(enums.CONTRIBUTOR_ROLE);
-    
-        enums.ACCEPTANCE = {
-            JOINED: 'joined',
-            INVITED: 'invited',
-            ACCEPTED: 'accepted'
-            //REJECTED: 'rejected'
-        };
-        enums.ACCEPTANCES = enumToArray(enums.ACCEPTANCE);
-    
-        enums.ACCEPT_ACTION = {
-            INVITE: 'invite',
-            JOIN: 'join',
-            ACCEPT: 'accept',
-            REJECT: 'reject'
-        };
-        enums.ACCEPT_ACTIONS = enumToArray(enums.ACCEPT_ACTION);
-    
-        enums.JOIN_METHOD = {
-            INVITE: 'invite',
-            APPROVE: 'approve',
-            OPEN: 'open'
-        };
-        enums.JOIN_METHODS = enumToArray(enums.JOIN_METHOD);
-    
-        enums.SKILL_LEVEL = {
-            NOVICE: 'novice',
-            INTERMEDIATE: 'intermediate',
-            ADVANCED: 'advanced',
-            EXPERT: 'expert'
-        };
-        enums.SKILL_LEVELS = enumToArray(enums.SKILL_LEVEL);
-    
-        enums.FEEDBACK_TYPE = {
-            SUPPORT: 'support',
-            TEAM: 'team',
-            MEETUP: 'meetup',
-            COPYRIGHT: 'copyright',
-            BUSINESS: 'business',
-            ADVERTISEMENT: 'ad'
-        };
-        enums.FEEDBACK_TYPES = enumToArray(enums.FEEDBACK_TYPE);
-    
-        enums.NOTE_CATEGORY = {
-            GENERAL: 'general',
-            UNFINISHED: 'unfinished',
-            ULTIMATE_TODO: 'ultimate todo'
-        };
-        enums.NOTE_CATEGORIES = enumToArray(enums.NOTE_CATEGORY);
-    
-        enums.CONNECTION_TYPE = {
-            PARTNER: 'partner',
-            MEMBER: 'member',
-            FOLLOW: 'follow',
-            AUTOMATION: 'automation'
-        };
-        enums.CONNECTION_TYPES = enumToArray(enums.CONNECTION_TYPE);
-    
-        enums.EVENT_TYPE = {
-            INSTANCE: 'instance',
-            RECURRENCE: 'recurrence',
-            AUTO_INSTANCE: 'auto',
-            TIME_ENTRY: 'time entry'
-        };
-        enums.EVENT_TYPES = enumToArray(enums.EVENT_TYPE);
-    
-        enums.EVENT_CATEGORY = {
-            DAILY: 'daily',
-            WEEKLY: 'weekly',
-            MONTHLY: 'monthly',
-            YEARLY: 'yearly'
-            //    COULDDO: 'coulddo'
-        };
-        enums.EVENT_CATEGORIES = enumToArray(enums.EVENT_CATEGORY);
-    
-        enums.COMMENT_TYPE = {
-            BUZZ: 'buzz',
-            CHEER: 'cheer',
-            BOO: 'boo',
-            COMMENT: 'comment'
-        };
-        enums.COMMENT_TYPES = enumToArray(enums.COMMENT_TYPE);
-    
-        enums.POST_TYPE = {
-            INFO: 'info',
-            QUESTION: 'question',
-            ISSUE: 'issue',
-            REPORT: 'report',
-            FORECAST: 'forecast'
-        };
-        enums.POST_TYPES = enumToArray(enums.POST_TYPE);
-    
-        enums.MESSAGE_TYPE = {
-            REGULAR: 'regular',
-            EMAIL: 'email',
-            INVITATION: 'invitation'
-        };
-        enums.MESSAGE_TYPES = enumToArray(enums.MESSAGE_TYPE);
-    
-        enums.NOTIFICATION_TYPE = {
-            GREETING: 'greeting',
-            MESSAGE: 'message',
-    
-            PARTNER_INVITE: 'partner invite',
-            PARTNER_RESPONSE_ACCEPTED: 'partner response accepted',
-            PARTNER_RESPONSE_REJECTED: 'partner response rejected',
-            PARTNER_JOINED: 'partner joined',
-            MEMBER_INVITE: 'member invite',
-            MEMBER_REQUEST: 'member request',
-            MEMBER_RESPONSE_ACCEPTED: 'member response accepted',
-            MEMBER_RESPONSE_REJECTED: 'member response rejected',
-            MEMBER_JOINED: 'member joined',
-            FOLLOWER_JOINED: 'follower joined',
-    
-            ENTITY_REQUEST: 'entity request',
-            ENTITY_REQUEST_ACCEPTED: 'entity request accepted',
-            ENTITY_REQUEST_REJECTED: 'entity request rejected',
-            ENTITY_INVITE: 'entity invite',
-            ENTITY_INVITE_ACCEPTED: 'entity invite accepted',
-            ENTITY_INVITE_REJECTED: 'entity invite rejected',
-            ENTITY_JOINED: 'entity joined',
-    
-            VERIFY_EMAIL: 'verify email',
-            COMPLETE_PROFILE: 'complete profile'
-        };
-        enums.NOTIFICATION_TYPES = enumToArray(enums.NOTIFICATION_TYPE);
-    
-        enums.NOTIFICATION_BATCH_OPERATION = {
-            CREATE: 'create',
-            REPLY: 'reply',
-            CLOSE: 'close',
-            DELETE: 'delete'
-        };
-    
-        enums.SUPPORT_CASE_CATEGORY = {
-            ACCOUNT: 'account',
-            BILLING: 'billing',
-            TECHNICAL: 'technical',
-            GENERAL: 'general'
-        };
-        enums.SUPPORT_CASE_CATEGORIES = enumToArray(enums.SUPPORT_CASE_CATEGORY);
-    
-        enums.ANNOUNCE_TYPE = {
-            APP: 'app',
-            EMAIL: 'email',
-            APP_AND_EMAIL: 'app and email'
-        };
-        enums.ANNOUNCE_TYPES = enumToArray(enums.ANNOUNCE_TYPE);
-    
-        enums.ANNOUNCE_CATEGORY = {
-            GENERAL: 'general',
-            MAINTENANCE: 'maintenance',
-            NEW_RELEASE: 'new release',
-            SURVEY: 'survey'
-        };
-        enums.ANNOUNCE_CATEGORIES = enumToArray(enums.ANNOUNCE_CATEGORY);
-    
-        enums.GUIDE_TYPE = {
-            INTRO: 'intro',
-            TOPIC: 'topic',
-            CONTEXT: 'context',
-            TIP: 'tip',
-            NEW_RELEASE: 'new release'
-        };
-        enums.GUIDE_TYPES = enumToArray(enums.GUIDE_TYPE);
-    
-        enums.EMAIL_TYPE = {
-            HOME: 'home',
-            WORK: 'work',
-            OTHER: 'other'
-        };
-        enums.EMAIL_TYPES = enumToArray(enums.EMAIL_TYPE);
-    
-        enums.ADDRESS_TYPE = {
-            HOME: 'home',
-            WORK: 'work',
-            OTHER: 'other'
-        };
-        enums.ADDRESS_TYPES = enumToArray(enums.ADDRESS_TYPE);
-    
-        enums.ADDRESS_TYPE = {
-            HOME: 'home',
-            WORK: 'work',
-            OTHER: 'other'
-        };
-        enums.ADDRESS_TYPES = enumToArray(enums.ADDRESS_TYPE);
-    
-        enums.PHONE_TYPE = {
-            MOBILE: 'mobile',
-            WORK: 'work',
-            HOME: 'home',
-            MAIN: 'main',
-            WORK_FAX: 'work fax',
-            HOME_FAX: 'home fax',
-            OTHER: 'other'
-        };
-        enums.PHONE_TYPES = enumToArray(enums.PHONE_TYPE);
-    
-        enums.MESSANGER_TYPE = {
-            SKYPE: 'skype',
-            GOOGLE_TALK: 'google talk',
-            AIM: 'aim',
-            YAHOO: 'yahoo',
-            QQ: 'qq',
-            MSN: 'msn',
-            ICQ: 'icq',
-            JABBER: 'jabber',
-            OTHER: 'other'
-        };
-        enums.MESSANGER_TYPES = enumToArray(enums.MESSANGER_TYPE);
-    
-        enums.WEB_ADDRESS_TYPE = {
-            PROFILE: 'profile',
-            BLOG: 'blog',
-            HOME_PAGE: 'home page',
-            WORK: 'work',
-            PORTFOLIO: 'portfolio',
-            OTHER: 'other'
-        };
-        enums.WEB_ADDRESS_TYPES = enumToArray(enums.WEB_ADDRESS_TYPE);
-    
-        enums.DASHBOARD_TILE_SIZE = {
-            SMALL: 'small',
-            WIDE: 'wide',
-            LARGE: 'large'
-        };
-        enums.DASHBOARD_TILE_SIZES = enumToArray(enums.DASHBOARD_TILE_SIZE);
-
-        return enums;
-    });
-    
-})();
-
-/**
- * @file PipServices Rest API
- * @copyright Digital Living Software Corp. 2014-2016
- * @todo:
- * - Separate application and administrative APIs
- */
-
-(function () {
-    'use strict';
-
-    var thisModule = angular.module('pipRest', [
-        'ngResource',  
-        'pipRest.Enums', 'pipRest.Access',
-        'pipRest.Session', 'pipRest.State'
-    ]);
-
-    thisModule.provider('pipRest', ['$httpProvider', function($httpProvider) {
-        var serverUrl = '';
-        var serverUrlFixed = false;
-
-        // Set default API version
-        $httpProvider.defaults.headers.common['api-version'] = '1.0';
-
-
-        this.version = function (newVersion) {
-            if (newVersion)
-                $httpProvider.defaults.headers.common['api-version'] = newVersion;
-            return $httpProvider.defaults.headers.common['api-version'];
-        };
-
-        this.serverUrlFixed = function (value) {
-            if (value === true || value === 'on' )
-                serverUrlFixed = value;
-            return serverUrlFixed;
-        };
-
-        this.serverUrl = function (newServerUrl) {
-            if (newServerUrl)
-                serverUrl = newServerUrl;
-            return newServerUrl;
-        };
-
-        this.$get = ['$rootScope', '$http', '$resource', function ($rootScope, $http, $resource) {
-
-            function createResource(url, path, paramDefaults, actions) {
-                url = url || serverUrl;
-                return $resource(url + path, paramDefaults, actions);
-            };
-    
-            function createOperation(url, path) {
-                url = url || serverUrl;
-                return $resource(url + path, {},
-                    {
-                        call: {method: 'POST'}
-                    }
-                );
-            };
-    
-            function createCollection(url, path, paramDefaults) {
-                url = url || serverUrl;
-                return $resource(url + path,
-                    paramDefaults || { id: '@id' },
-                    {
-                        update: {method: 'PUT'}
-                    }
-                );
-            };
-    
-            function createPagedCollection(url, path, paramDefaults) {
-                url = url || serverUrl;
-                return $resource(url + path,
-                    paramDefaults || { id: '@id' },
-                    {
-                        page: {method: 'GET', isArray: false},
-                        update: {method: 'PUT'}
-                    }
-                );
-            };
-    
-            function createPartyCollection(url, path, paramDefaults) {
-                return createPagedCollection(url, path, paramDefaults ||
-                    {
-                        id: '@id',
-                        party_id: '@party_id'
-                    }
-                );
-            };
-
-            return {
-                version: function (newVersion) {
-                    if (newVersion)
-                        $httpProvider.defaults.headers.common['api-version'] = newVersion;
-                    return $httpProvider.defaults.headers.common['api-version'];
-                },
-
-                serverUrl: function (newServerUrl) {
-                    if (newServerUrl) {
-                        serverUrl = newServerUrl;
-                    }
-                    return serverUrl;
-                },
-
-                userId: function () {
-                    return $http.defaults.headers.common['user-id'];
-                },
-
-                serverUrlFixed: function() {
-                    return serverUrlFixed;
-                },
-
-                sessionId: function () {
-                    return $http.defaults.headers.common['session-id'];
-                },
-
-                // Used in routing
-                partyId: function ($stateParams) {
-                    return $stateParams.party_id || $http.defaults.headers.common['user-id'];
-                },
-
-                about: function (url) {
-                    return createResource(url, '/api/about');
-                },
-
-                session: function (userId, sessionId) {
-                    $http.defaults.headers.common['session-id'] = sessionId;
-                    $http.defaults.headers.common['user-id'] = userId;
-                },
-
-                signin: function (url) {
-                    return createOperation(url, '/api/signin');
-                },
-
-                signout: function (url) {
-                    return createOperation(url, '/api/signout');
-                },
-
-                signup: function (url) {
-                    return createOperation(url, '/api/signup');
-                },
-
-                recoverPassword: function (url) {
-                    return createOperation(url, '/api/recover_password');
-                },
-
-                resetPassword: function (url) {
-                    return createOperation(url, '/api/reset_password');
-                },
-
-                changePassword: function (url) {
-                    return createOperation(url, '/api/change_password');
-                },
-
-                requestEmailVerification: function (url) {
-                    return createCollection(url, '/api/users/:party_id/resend_email_verification');
-                },
-
-                verifyEmail: function (url) {
-                    return createOperation(url, '/api/verify_email');
-                },
-
-                signupValidate: function (url) {
-                    return createOperation(url, '/api/signup_validate');
-                },
-
-                users: function (url) {
-                    return createPagedCollection(url, '/api/users/:id');
-                },
-
-                currentUser: function (url) {
-                    return createResource(url, '/api/users/current',
-                        {},
-                        {
-                            get: {method: 'GET', isArray: false}
-                        }
-                    );
-                },
-
-                userSessions: function (url) {
-                    return createPartyCollection(url, '/api/users/:party_id/sessions/:id');
-                },
-
-
-                parties: function (url) {
-                    return createPagedCollection(url, '/api/parties/:id');
-                },
-
-                //
-                // inviteParty: function (url) {
-                //     return createPagedCollection(url, '/api/parties/:id/invite');
-                // },
-                //
-                // partyActivities: function (url) {
-                //     return createPartyCollection(url, '/api/parties/:party_id/activities');
-                // },
-                //
-                partySettings: function (url) {
-                    return createPartyCollection(url, '/api/parties/:party_id/settings');
-                },
-                //
-                // partyTags: function (url) {
-                //     return createPartyCollection(url, '/api/parties/:party_id/tags');
-                // },
-
-                serverActivities: function (url) {
-                    return createPagedCollection(url, '/api/servers/activities/:id');
-                },
-
-                // connectionBlocks: function (url) {
-                //     return createPartyCollection(url, '/api/parties/:party_id/blocks/:id');
-                // },
-                //
-                // connectionSuggestions: function (url) {
-                //     return createCollection(url, '/api/parties/:party_id/connections/suggestions',
-                //         {
-                //             party_id: '@party_id'
-                //         }
-                //     );
-                // },
-                //
-                
-                // TBD: REFACTOR SESSION_CACHE AND MOVE OUT OF HERE
-                connections: function (url) {
-                    return createPartyCollection(url, '/api/parties/:party_id/connections/:id');
-                },
-                //
-                // // Todo: Deprecated operation
-                // managedConnections: function (url) {
-                //     return createPartyCollection(url, '/api/parties/:party_id/connections/managed');
-                // },
-                //
-                // // Todo: Deprecated operation. Use party_access from user object instead
-                // collaborators: function (url) {
-                //     return createCollection(url, '/api/parties/:party_id/collaborators/:to_party_id',
-                //         {
-                //             to_party_id: '@to_party_id',
-                //             party_id: '@party_id'
-                //         }
-                //     );
-                // },
-                //
-                // partners: function (url) {
-                //     return createPartyCollection(url, '/api/parties/:party_id/partners/:id');
-                // },
-                //
-                // acceptPartner: function (url) {
-                //     return createPartyCollection(url, '/api/parties/:party_id/partners/:id/accept');
-                // },
-                //
-                // members: function (url) {
-                //     return createPartyCollection(url, '/api/parties/:party_id/members/:id');
-                // },
-                //
-                // acceptMember: function (url) {
-                //     return createPartyCollection(url, '/api/parties/:party_id/members/:id/accept');
-                // },
-                //
-                // following: function (url) {
-                //     return createPartyCollection(url, '/api/parties/:party_id/following/:id');
-                // },
-                //
-                // followers: function (url) {
-                //     return createPartyCollection(url, '/api/parties/:party_id/followers/:id');
-                // },
-                //
-                // groups: function (url) {
-                //     return createPartyCollection(url, '/api/parties/:party_id/groups/:id');
-                // },
-                //
-                // contacts: function (url) {
-                //     return createPartyCollection(url, '/api/parties/:party_id/contacts/:id');
-                // },
-                //
-                // getOwnContacts: function (url) {
-                //     return createPartyCollection(url, '/api/parties/:party_id/contacts/own');
-                // },
-                //
-                // quotes: function (url) {
-                //     return createPagedCollection(url, '/api/quotes/:id');
-                // },
-                //
-                // randomQuote: function (url) {
-                //     return createResource(url, '/api/quotes/random');
-                // },
-                //
-                guides: function (url) {
-                    return createPagedCollection(url, '/api/guides/:id');
-                },
-
-                tips: function (url) {
-                    return createPagedCollection(url, '/api/tips/:id');
-                },
-
-                image_sets: function (url) {
-                    return createPagedCollection(url, '/api/image_sets/:id');
-                },
-
-                images: function (url) {
-                    return createPagedCollection(url, '/api/images/search');
-                },
-
-                // notes: function (url) {
-                //     return createPartyCollection(url, '/api/parties/:party_id/notes/:id');
-                // },
-                //
-                // // Todo: This operation is deprecated. Use contributors management instead
-                // sendNote: function (url) {
-                //     return createPartyCollection(url, '/api/parties/:party_id/notes/:id/send');
-                // },
-
-                feedbacks: function (url) {
-                    return createPartyCollection(url, '/api/feedbacks/:id');
-                },
-
-                // feeds: function (url) {
-                //     return createPartyCollection(url, '/api/parties/:party_id/feeds/:id');
-                // },
-
-                // publicPosts: function (url) {
-                //     return createCollection(url, '/api/posts/:id');
-                // },
-                //
-                // posts: function (url) {
-                //     return createPartyCollection(url, '/api/parties/:party_id/posts/:id');
-                // },
-                //
-                // allFeedPosts: function (url) {
-                //     return createPartyCollection(url, '/api/parties/:party_id/feeds/posts/:id');
-                // },
-                //
-                // feedPosts: function (url) {
-                //     return createPartyCollection(url, '/api/parties/:party_id/feeds/:feed_id/posts/:id',
-                //         {
-                //             id: '@id',
-                //             party_id: '@party_id',
-                //             feed_id: '@feed_id'
-                //         }
-                //     );
-                // },
-                //
-                // // Todo: Move under party  /api/parties/:party_id/posts/:post_id/comments
-                // postComments: function (url) {
-                //     return createCollection(url, '/api/parties/:party_id/posts/:id/comments/:comment_id',
-                //         {
-                //             party_id: '@party_id',
-                //             id: '@id',
-                //             comment_id: '@comment_id'
-                //         }
-                //     );
-                // },
-                //
-                // postCheers: function (url) {
-                //     return createPartyCollection(url, '/api/parties/:party_id/posts/:post_id/cheers',
-                //         {
-                //             party_id: '@party_id',
-                //             post_id: '@post_id'
-                //         }
-                //     );
-                // },
-                //
-                // postBoos: function (url) {
-                //     return createPartyCollection(url, '/api/parties/:party_id/posts/:post_id/boos',
-                //         {
-                //             party_id: '@party_id',
-                //             post_id: '@post_id'
-                //         }
-                //     );
-                // },
-                //
-                // events: function (url) {
-                //     return createPartyCollection(url, '/api/parties/:party_id/events/:id');
-                // },
-                //
-                // acceptEvent: function (url) {
-                //     return createPartyCollection(url, '/api/parties/:party_id/events/:id/accept');
-                // },
-                //
-                // rejectEvent: function (url) {
-                //     return createPartyCollection(url, '/api/parties/:party_id/events/:id/reject');
-                // },
-                //
-                // acceptVision: function (url) {
-                //     return createPartyCollection(url, '/api/parties/:party_id/visions/:id/accept');
-                // },
-                //
-                // rejectVision: function (url) {
-                //     return createPartyCollection(url, '/api/parties/:party_id/visions/:id/reject');
-                // },
-                //
-                // messages: function (url) {
-                //     return createPartyCollection(url, '/api/parties/:party_id/messages/:id');
-                // },
-                //
-                // receivedMessages: function (url) {
-                //     return createPartyCollection(url, '/api/parties/:party_id/messages/received',
-                //         {
-                //             party_id: '@party_id'
-                //         }
-                //     );
-                // },
-                //
-                // receivedManagedMessages: function (url) {
-                //     return createCollection(url, '/api/parties/:party_id/messages/received/managed',
-                //         {
-                //             party_id: '@party_id'
-                //         }
-                //     );
-                // },
-                //
-                // sentMessages: function (url) {
-                //     return createCollection(url, '/api/parties/:party_id/messages/sent',
-                //         {
-                //             party_id: '@party_id'
-                //         }
-                //     );
-                // },
-                //
-                // viewMessage: function (url) {
-                //     return createPartyCollection(url, '/api/parties/:party_id/messages/:id/view');
-                // },
-                //
-                // sentManagedMessages: function (url) {
-                //     return createCollection(url, '/api/parties/:party_id/messages/sent/managed',
-                //         {
-                //             party_id: '@party_id'
-                //         }
-                //     );
-                // },
-                //
-                // notifications: function (url) {
-                //     return createCollection(url, '/api/parties/:party_id/notifications',
-                //         {
-                //             party_id: '@party_id'
-                //         }
-                //     );
-                // },
-                //
-                // // Todo: Add party?
-                // managedNotifications: function (url) {
-                //     return createCollection(url, '/api/parties/:party_id/notifications/managed', {
-                //         party_id: '@party_id'
-                //     });
-                // },
-                //
-                // areas: function (url) {
-                //     return createPartyCollection(url, '/api/parties/:party_id/areas/:id');
-                // },
-                //
-                // acceptArea: function (url) {
-                //     return createPartyCollection(url, '/api/parties/:party_id/areas/:id/accept');
-                // },
-                //
-                // rejectArea: function (url) {
-                //     return createPartyCollection(url, '/api/parties/:party_id/areas/:id/reject');
-                // },
-                //
-                // goals: function (url) {
-                //     return createPartyCollection(url, '/api/parties/:party_id/goals/:id');
-                // },
-                //
-                // acceptGoal: function (url) {
-                //     return createPartyCollection(url, '/api/parties/:party_id/goals/:id/accept');
-                // },
-                //
-                // rejectGoal: function (url) {
-                //     return createPartyCollection(url, '/api/parties/:party_id/goals/:id/reject');
-                // },
-                //
-                // visions: function (url) {
-                //     return createPartyCollection(url, '/api/parties/:party_id/visions/:id');
-                // },
-                //
-                // // Todo: This one doesn't exist on the server
-                // collages: function (url) {
-                //     return createPartyCollection(url, '/api/parties/:party_id/collages/:id');
-                // },
-                //
-                // partySupportCases: function (url) {
-                //     return createPartyCollection(url, '/api/parties/:party_id/support_cases/:id');
-                // },
-                //
-                // supportCases: function (url) {
-                //     return createPagedCollection(url, '/api/support_cases/:id');
-                // },
-
-                announces: function (url) {
-                    return createPagedCollection(url, '/api/announcements/:id');
-                },
-
-                // stats: function (url) {
-                //     return createPagedCollection(url, '/api/parties/:party_id/counters');
-                // },
-                //
-                // eventContribManage: function (url) {
-                //     return createPagedCollection(url, '/api/parties/:party_id/events/:id/manage_contrib',
-                //         {
-                //             id: '@id',
-                //             party_id: '@party_id'
-                //         }
-                //     );
-                // },
-                //
-                // areaContribManage: function (url) {
-                //     return createPagedCollection(url, '/api/parties/:party_id/areas/:id/manage_contrib',
-                //         {
-                //             id: '@id',
-                //             party_id: '@party_id'
-                //         }
-                //     );
-                // },
-                //
-                // goalContribManage: function (url) {
-                //     return createPagedCollection(url, '/api/parties/:party_id/goals/:id/manage_contrib',
-                //         {
-                //             id: '@id',
-                //             party_id: '@party_id'
-                //         }
-                //     );
-                // },
-                //
-                // visionContribManage: function (url) {
-                //     return createPagedCollection(url, '/api/parties/:party_id/visions/:id/manage_contrib',
-                //         {
-                //             id: '@id',
-                //             party_id: '@party_id'
-                //         }
-                //     );
-                // },
-                //
-                // noteContribManage: function (url) {
-                //     return createPagedCollection(url, '/api/parties/:party_id/notes/:id/manage_contrib',
-                //         {
-                //             id: '@id',
-                //             party_id: '@party_id'
-                //         }
-                //     );
-                // },
-
-                // for testing
-                //--------------
-
-                createResource: createResource,
-                createOperation: createOperation,
-                createCollection: createCollection,
-                createPagedCollection: createPagedCollection,
-                createPartyCollection: createPartyCollection
-
-            };
-        }];
-    }]);
-
-})();
-
-/**
- * @file Session service for PipServices Rest API
- * @copyright Digital Living Software Corp. 2014-2016
- */
-
-(function () {
-    'use strict';
-
-    var thisModule = angular.module('pipRest.Session', ['ngCookies', 'pipRest']);
-
-    thisModule.run(['pipSession', function(pipSession) {
-        // Reload session to avoid signin
-        pipSession.reopen();
-    }]);
-
-    thisModule.factory('pipSession', 
-        ['$rootScope', '$http', 'localStorageService', '$cookieStore', 'pipRest', 'pipTimer', function ($rootScope, $http, localStorageService, $cookieStore, pipRest, pipTimer) {
-            var 
-                currentOperation = undefined,
-                sessionId, userId, serverUrl;
-
-            return {
-                opened: opened,
-                userId: getUserId,
-                sessionId: getSessionId,
-                serverUrl: getServerUrl,
-
-                lastUsedEmail: lastUsedEmail,
-                //lastUsedPassword: lastUsedPassword,
-                usedServers: usedServers,
-                usedServerUrls: usedServerUrls,
-
-                signin: signin,
-                abort: abort,
-                signout: signout,
-
-                open: open,
-                close: close,
-                reopen: reopen
-            };
-            //-----------------------
-
-            // Session Ids
-            //---------------
-
-            function getUserId() {
-                return userId;
-            };
-
-            function getSessionId() {
-                return sessionId;  
-            };
-
-            function getServerUrl() {
-                return serverUrl || localStorageService.get('serverUrl');
-            };
-
-            function opened() {
-                var isOpened = (sessionId !== '' && sessionId !== null && sessionId !== undefined) &&
-                    (userId !== '' && userId !== null && userId !== undefined) &&
-                    (serverUrl !== '' && serverUrl !== null && serverUrl !== undefined);
-
-                return isOpened;
-            };
-
-            // Saved connection settings
-            //----------------------------
-            
-            function lastUsedEmail(serverUrl) {
-                var servers = localStorageService.get('servers');
-                if (servers && servers[serverUrl]) {
-                    return servers[serverUrl].email;
-                }
-                return undefined;
-            };
-
-            function usedServers() {
-                return localStorageService.get('servers') || {};
-            };
-
-            function usedServerUrls() {
-                var 
-                    servers = localStorageService.get('servers'),
-                    serverUrls = [], serverUrl;
-                        
-                for (var prop in servers) {
-                    if (servers.hasOwnProperty(prop)) {
-                        serverUrl = servers[prop].serverUrl;
-                        if (serverUrl) {
-                            serverUrls.push(serverUrl);
-                        }
-                    }
-                }
-
-                return serverUrls;
-            };
-
-            // Session management
-            //---------------------
-
-            function signin(params, successCallback, errorCallback) {
-                var 
-                    serverUrl = params.serverUrl,
-                    email = params.email,
-                    password = params.password,
-                    remember = params.remember,
-                    adminOnly = !!params.adminOnly,
-                    thisOperation = new Date().getTime();
-
-                currentOperation = thisOperation;
-
-                $http.defaults.headers.common['session-id'] = undefined;
-                $http.defaults.headers.common['user-id'] = undefined;
-                $http.defaults.headers.common['account-id'] = undefined;
-
-                pipRest.signin(serverUrl).call(
-                    { 
-                        email: email, 
-                        password: password,
-                        remember: remember
-                    },
-                    function(user) {
-                        if (currentOperation != thisOperation) {
-                            return;
-                        } else {
-                            currentOperation = undefined;
-
-                            if (adminOnly && !user.admin) {
-                                errorCallback('ERROR_ADMIN_ONLY_ACCESS');
-                            } else {
-                                open(serverUrl, user, remember);
-                                $rootScope.$broadcast('pipAutoPullChanges');
-                                successCallback(user);
-                            }
-                        }
-                    }, 
-                    function(error) {
-                        if (currentOperation != thisOperation) {
-                            return;
-                        } else {
-                            currentOperation = undefined;
-                            errorCallback(error);   
-                        }
-                    }
-                );
-            };
-
-            function signup(params, successCallback, errorCallback) {
-                var 
-                    serverUrl = params.serverUrl,
-                    name = params.name,
-                    email = params.email,
-                    password = params.password,
-                    language = params.language,
-                    remember = false,
-                    thisOperation = new Date().getTime();
-
-                pipRest.signup(serverUrl).call(
-                    {
-                        name: name,
-                        email: email,
-                        password: password,
-                        language: language
-                    },
-                    function(user) {
-                        if (currentOperation != thisOperation) {
-                            return;
-                        } else {
-                            currentOperation = undefined;
-
-                            open(serverUrl, user, remember);
-                            successCallback(user);
-                        }
-                    }, 
-                    function(error) {
-                        if (currentOperation != thisOperation) {
-                            return;
-                        } else {
-                            currentOperation = undefined;
-                            errorCallback(error);   
-                        }
-                    }
-                );
-            };
-
-            function abort() {
-                currentOperation = undefined;
-            };
-
-            function signout(callback) {
-                if (opened()) {
-                    pipRest.signout().call({}, callback, callback);
-                }
-
-                close();
-            };
-
-            function open(currentServerUrl, user, remember) {
-                sessionId = user.last_session_id;
-                userId = user.id;
-                serverUrl = currentServerUrl;
-
-                // Set default headers for subsequent HTTP requests
-                $http.defaults.headers.common['session-id'] = sessionId;
-                $http.defaults.headers.common['user-id'] = userId;
-
-                // Save ids into local storage
-                if (remember) {
-                    var servers = localStorageService.get('servers') || {};
-                    servers[serverUrl] = {
-                        serverUrl: serverUrl,
-                        email: user.email
-                    };
-                    localStorageService.set('servers', servers);
-
-                    localStorageService.set('sessionId', sessionId);
-                    localStorageService.set('userId', userId);
-                    localStorageService.set('serverUrl', serverUrl);
-                }
-
-                // Save into session id to retain the connection while browser is running
-                // Remove from cookie store
-                $cookieStore.put('user-id', userId);
-                $cookieStore.put('session-id', sessionId);
-                $cookieStore.put('server-url', serverUrl);
-
-                // Save context parameters do not save
-                if (!pipRest.serverUrlFixed()) pipRest.serverUrl(serverUrl);
-                
-                // Send broadcast
-                // saveSession data
-                $rootScope.$emit(
-                    'pipSessionOpened', 
-                    { 
-                        serverUrl: serverUrl,
-                        sessionId: sessionId,
-                        userId: userId,
-                        user: user
-                    }
-                );
-                pipTimer.start();
-            };
-
-            function reopen() {
-                userId = $cookieStore.get('user-id') || localStorageService.get('userId');
-                sessionId = $cookieStore.get('session-id') || localStorageService.get('sessionId');
-                serverUrl = $cookieStore.get('server-url') || localStorageService.get('serverUrl');
-
-                // Set default headers for subsequent HTTP requests
-                $http.defaults.headers.common['session-id'] = sessionId;
-                $http.defaults.headers.common['user-id'] = userId;
-
-                if (!pipRest.serverUrlFixed() || !pipRest.serverUrl()) pipRest.serverUrl(serverUrl);
-                $rootScope.$serverUrl = pipRest.serverUrl();
-                // Send broadcast
-                $rootScope.$emit(
-                    'pipSessionOpened', 
-                    { 
-                        serverUrl: serverUrl,
-                        sessionId: sessionId,
-                        userId: userId
-                    }
-                );
-
-            };
-
-            function close() {
-                sessionId = undefined;
-                userId = undefined;
-                        
-                // Unset default headers for subsequent HTTP requests
-                $http.defaults.headers.common['session-id'] = undefined;
-                $http.defaults.headers.common['user-id'] = undefined;
-
-                // Remove ids into local storage
-                localStorageService.remove('userId');
-                localStorageService.remove('sessionId');
-
-                // Remove from cookie store
-                $cookieStore.remove('user-id');
-                $cookieStore.remove('session-id');
-
-                // RemoveToastMessages
-                pipTimer.stop();
-
-                // Send broadcast
-                // RemoveToastMessages
-                $rootScope.$emit('pipSessionClosed');
-            };
-        }]
-    );
-
-})();
-/**
  * @file Global application data cache
  * @copyright Digital Living Software Corp. 2014-2016
  */
@@ -3592,6 +1809,1789 @@
             }
         }];
     });
+
+})();
+/**
+ * @file User access permissions service
+ * @copyright Digital Living Software Corp. 2014-2016
+ */
+ 
+ /* global _, angular */
+
+(function () {
+    'use strict';
+
+    var thisModule = angular.module('pipRest.Access', ['pipUtils', 'pipRest.Enums']);
+
+    thisModule.factory('pipAccess', ['pipUtils', 'pipEnums', function (pipUtils, pipEnums) {
+
+        function defaultAccess(account) {
+            // Clone and set default values
+            var user = _.defaults(
+                {
+                    // Fix id
+                    id: account.id || account._id,
+                    party_id: null,
+                    party_name: null,
+                    type: null,
+                    owner: false,
+                    manager: false,
+                    contributor: false,
+                    share_level: pipEnums.SHARE_LEVEL.WORLD
+                },
+                account
+            );
+    
+            delete user._id;
+    
+            return user;
+        };
+    
+        function fixAccess(user) {
+            // Owner acts as his own manager
+            user.manager = user.manager || user.owner;
+    
+            // Manager has contributor rights
+            user.contributor = user.contributor || user.manager;
+    
+            // Managers and contributors can access at private level
+            if (user.contributor)
+                user.share_level = pipEnums.SHARE_LEVEL.PRIVATE;
+    
+            return user;
+        }
+    
+        function overrideAccess(user, access) {
+            // Copy over override
+            user.party_id = access.party_id;
+            user.party_name = access.party_name;
+            user.type = access.type;
+            user.owner = !!access.owner;
+            user.manager = !!access.manager;
+            user.contributor = !!access.contributor;
+            user.share_level = access.share_level || pipEnums.SHARE_LEVEL.WORLD;
+    
+            // Party can be set as an object
+            if (access.party) {
+                user.party_id = access.party.id || access.party._id;
+                user.party_name = access.party.name;
+            }
+    
+            // Make access settings consistent and return
+            return fixAccess(user);
+        };
+    
+        function asOwner(account) {
+            // Skip if no account set
+            if (account == null) return undefined;
+    
+            // Construct default user
+            var user = defaultAccess(account);
+    
+            // Set owner access rights
+            user.party_id = user.id;
+            user.party_name = user.name;
+            user.type = null;
+            user.owner = true;
+            user.manager = true;
+            user.contributor = true;
+            user.share_level = pipEnums.SHARE_LEVEL.PRIVATE;
+    
+            return user;
+        };
+    
+        function toParty(account, party) {
+            // Skip if no account set
+            if (account == null) return undefined;
+    
+            // If no party set then assume owner access
+            if (party == null) return asOwner(account);
+    
+            var 
+                userId = account.id || account._id,
+                partyId = party.id || party._id || party,
+                partyName = party.name || account.name;
+    
+            // If user and party are the same then
+            if (userId == partyId) return asOwner(account);
+    
+            // Set default values
+            var user = defaultAccess(account);
+            user.party_id = partyId;
+            user.party_name = partyName;
+    
+            // Identify maximum access level
+            _.each(user.party_access, function (access) {
+                if (pipUtils.equalObjectIds(partyId, access.party_id)) {
+                    user.party_name = access.party_name;
+                    user.type = access.type;
+                    user.manager = user.manager || access.manager;
+                    user.contributor = user.contributor || access.contributor;
+                    user.share_level = Math.max(user.share_level, access.share_level);
+                }
+            });
+    
+            // Make access settings consistent and return
+            return fixAccess(user);
+        };
+    
+        // Can be used for testing
+        function override(account, access) {
+            // Skip if no account set
+            if (account == null) return undefined;
+    
+            // Set default values
+            var user = defaultAccess(account);
+    
+            // If no override return plain user
+            if (access) overrideAccess(user, access);
+    
+            return user;
+        };
+    
+        // Can be used for testing
+        function toPartyWithOverride(account, party, access) {
+            var user = toParty(account, party);
+    
+            // If no override return plain user
+            if (access) overrideAccess(user, access);
+    
+            return user;
+        };
+        
+        return {
+            asOwner: asOwner,
+            toParty: toParty,
+            override: override,
+            toPartyWithOverride: toPartyWithOverride
+        };
+    }]);
+
+})();
+
+/**
+ * @file Application secure router
+ * @copyright Digital Living Software Corp. 2014-2016
+ */
+ 
+ /* global angular */
+ 
+(function () {
+    'use strict';
+    
+    var thisModule = angular.module('pipRest.State', ['pipState', 'pipRest.Session', 'pipRest.Access', 'pipSessionCache']);
+
+    thisModule.config(
+        ['$locationProvider', '$httpProvider', function($locationProvider, $httpProvider) {
+            // Attach interceptor to react on unauthorized errors
+            $httpProvider.interceptors.push('pipAuthHttpResponseInterceptor');
+        }]
+    );
+
+    thisModule.run(
+        ['$rootScope', 'pipState', 'pipSession', 'pipAuthState', function($rootScope, pipState, pipSession, pipAuthState) {
+
+            // Intercept routes
+            $rootScope.$on('$stateChangeStart', stateChangeStart);
+            // Process unauthorized access error
+            $rootScope.$on('pipUnauthorizedRedirect', unauthorizedRedirect);
+            // Handle other errors
+            $rootScope.$on('pipMaintenanceError', maintenanceError);
+            $rootScope.$on('pipNoConnectionError', noConnectionError);
+            $rootScope.$on('pipMissingRouteError', missingRouteError);
+            $rootScope.$on('pipUnknownError', unknownError);
+
+            function stateChangeStart(event, toState, toParams, fromState, fromParams) {
+                // Implement redirect mechanism
+                if (pipAuthState.redirect(event, toState, toParams, $rootScope)) {
+                    return;
+                }
+
+                // todo apply in all tool
+                // If user is not authorized then switch to signin
+                if ((toState.auth  || toState.auth === undefined) && !pipSession.opened()) {
+                    event.preventDefault();
+
+                    var redirectTo = pipState.href(toState.name, toParams);
+
+                    // Remove hashtag
+                    if (redirectTo.length > 0 && redirectTo[0] == '#') {
+                        redirectTo = redirectTo.substring(1);
+                    }
+
+                    pipAuthState.goToSignin({ redirect_to: redirectTo, toState: toState, toParams: toParams});
+
+                    return;
+                }
+
+                // Signout and move to unauthorized page
+                if (toState.name == pipAuthState.signoutState()) {
+                    event.preventDefault();
+                    pipSession.signout();
+                    pipAuthState.goToUnauthorized({});
+                    return;
+                }
+
+                // Move user to authorized page
+                if (toState.name == pipAuthState.unauthorizedState()
+                    && pipSession.opened()) {
+
+                    event.preventDefault();
+                    pipAuthState.goToAuthorized({});
+                    return;
+                }
+            }
+
+            function unauthorizedRedirect(event, params) {
+                pipSession.close();
+                pipAuthState.goToSignin(params);
+            }
+
+            function maintenanceError(event, params) {
+                pipAuthState.goToErrors('errors_maintenance', params);
+            }
+
+            function noConnectionError(event, params) {
+                pipAuthState.goToErrors('errors_no_connection', params);
+            }
+
+            function missingRouteError(event, params) {
+                pipAuthState.goToErrors('errors_missing_route', params);
+            }
+
+            function unknownError(event, params) {
+                pipAuthState.goToErrors('errors_unknown', params);
+            }
+
+        }]
+    );
+
+    thisModule.factory('pipAuthHttpResponseInterceptor',
+        ['$q', '$location', '$rootScope', function ($q, $location, $rootScope) {
+            return {
+                response: function (response) {
+                    // When server sends Non-authenticated response
+                    if (response.status === 401) {
+                        console.error("Response 401");
+                    }                    
+                    return response || $q.when(response);
+                },
+                
+                responseError: function (rejection) {
+
+
+                    var toState = $rootScope.$state && $rootScope.$state.name ? $rootScope.$state.name : null,
+                        toParams = $rootScope.$state && $rootScope.$state.params ? $rootScope.$state.params : null;
+                    // When server sends Non-authenticated response
+                    switch (rejection.status) {
+                        case 401:
+                        case 440:
+                            console.error("Response Error 401", rejection);
+                            // Redirect to unauthorized state
+                            $rootScope.$emit('pipUnauthorizedRedirect', {
+                                redirect_to:  toState && toParams && toParams.redirect_to ? '': $location.url(),
+                                toState: toState,
+                                toParams: toParams
+                            });
+
+                            break;
+                        case 503:
+                             //available (maintenance)
+                            $rootScope.$emit('pipMaintenanceError', {
+                                error: rejection
+                            });
+
+                            console.error("errors_maintenance", rejection);
+                            break;
+                        case -1:
+                            //$rootScope.$emit('pipNoConnectionError', {
+                            //    error: rejection
+                            //});
+
+                            console.error("errors_no_connection", rejection);
+                            break;
+                        default:
+                            // unhandled error (internal)
+                            //var code = rejection.code || (rejection.data || {}).code || null;
+                            //
+                            //// if not our server error generate errorEvent
+                            //if (!code) {
+                            //    $rootScope.$emit('pipUnknownError', {
+                            //        error: rejection
+                            //    });
+                            //}
+
+                            console.error("errors_unknown", rejection);
+                            break;
+                    }
+
+                    return $q.reject(rejection);
+                }
+            }
+        }]
+    );
+
+    thisModule.provider('pipAuthState', ['pipStateProvider', function(pipStateProvider) {
+        // Configuration of redirected states
+        userResolver.$inject = ['pipSessionCache'];
+        partyResolver.$inject = ['pipSessionCache', '$stateParams'];
+        connectionResolver.$inject = ['pipSessionCache', '$stateParams'];
+        settingsResolver.$inject = ['pipSessionCache'];
+        var 
+            signinState = null,
+            signoutState = null,
+            authorizedState = '/',
+            unauthorizedState = '/';
+
+        this.signinState = setSigninState;
+        this.signoutState = setSignoutState;
+        this.authorizedState = setAuthorizedState;
+        this.unauthorizedState = setUnauthorizedState;
+
+        this.redirect = pipStateProvider.redirect;
+        this.state = stateOverride;
+
+        this.$get = ['pipState', function (pipState) {            
+            pipState.signinState = function() { return signinState; };
+            pipState.signoutState = function() { return signoutState; };
+            pipState.authorizedState = function() { return authorizedState; };            
+            pipState.unauthorizedState = function() { return unauthorizedState; };
+            
+            pipState.goToErrors = function(toState, params) {
+                if (toState == null)
+                    throw new Error('Error state was not defined');
+
+                pipState.go(toState, params);
+            };
+
+            pipState.goToSignin = function(params) {
+                if (signinState == null)
+                    throw new Error('Signin state was not defined');
+
+                pipState.go(signinState, params);
+            };
+
+            pipState.goToSignout = function(params) {
+                if (signoutState == null)
+                    throw new Error('Signout state was not defined');
+                    
+                pipState.go(signoutState, params);  
+            };
+
+            pipState.goToAuthorized = function(params) {
+                if (authorizedState == null)
+                    throw new Error('Authorized state was not defined');
+                                        
+                pipState.go(authorizedState, params);
+            };
+
+            pipState.goToUnauthorized = function(params) {
+                if (unauthorizedState == null)
+                    throw new Error('Unauthorized state was not defined');
+                    
+                pipState.go(unauthorizedState, params);  
+            };
+
+            return pipState;
+        }];
+
+        return;        
+        //--------------------------------
+
+        function setSigninState(newSigninState) {
+            if (newSigninState)
+                signinState = newSigninState;
+            return signinState;
+        }
+
+        function setSignoutState(newSignoutState) {
+            if (newSignoutState)
+                signoutState = newSignoutState;
+            return signoutState;
+        }
+
+        function setAuthorizedState(newAuthorizedState) {
+            if (newAuthorizedState)
+                authorizedState = newAuthorizedState;
+            return authorizedState;
+        }
+
+        function setUnauthorizedState(newUnauthorizedState) {
+            if (newUnauthorizedState)
+                unauthorizedState = newUnauthorizedState;
+            return unauthorizedState;
+        }
+
+        // Overriding state configuration in ui-router to add auth resolves
+        function stateOverride(stateName, stateConfig) {
+            if (stateName == null)
+                throw new Error('stateName cannot be null');
+            if (stateConfig == null)
+                throw new Error('stateConfig cannot be null');
+
+            // todo apply in all tool
+            if (stateConfig.auth || stateConfig.authenticate) {
+                stateConfig.resolve = stateConfig.resolve || {};
+
+                stateConfig.resolve.user = /* @ngInject */ userResolver;
+                stateConfig.resolve.party = /* @ngInject */ partyResolver;
+                stateConfig.resolve.connection = /* @ngInject */ connectionResolver;
+                stateConfig.resolve.setting = /* @ngInject */ settingsResolver;
+            }    
+
+            pipStateProvider.state(stateName, stateConfig);
+
+            return this;
+        }
+
+        function userResolver(pipSessionCache) {
+            return pipSessionCache.readUser();
+        }
+
+        function partyResolver(pipSessionCache, $stateParams) {
+            return pipSessionCache.readParty($stateParams);
+        }
+
+        function connectionResolver(pipSessionCache, $stateParams) {
+            return pipSessionCache.readConnection($stateParams);
+        }
+
+        function settingsResolver(pipSessionCache) {
+            return pipSessionCache.readSettings();
+        }
+
+    }]);
+
+})();
+/**
+ * @file Rest API enumerations service
+ * @copyright Digital Living Software Corp. 2014-2016
+ */
+ 
+ /* global _, angular */
+
+(function () {
+    'use strict';
+
+    var thisModule = angular.module('pipRest.Enums', []);
+
+    thisModule.factory('pipEnums', function () {
+
+        var enums = {};
+    
+        // Converts enumeration values to string array
+        function enumToArray(obj) {
+            var result = [];
+    
+            for (var key in obj)
+                if (obj.hasOwnProperty(key))
+                    result.push(obj[key]);
+
+            return result;
+        };
+    
+        enums.SHARE_LEVEL = {
+            WORLD: 0, // Everyone
+            OUTER: 1, // Familiar
+            INNER: 2, // Trusted
+            PRIVATE: 3 // Private
+        };
+    
+        enums.URGENCY = {
+            LOW: 1,
+            NORMAL: 500,
+            HIGH: 1000,
+            MIN: 0,
+            MAX: 1000
+        };
+        enums.URGENCIES = enumToArray(enums.URGENCY);
+    
+        enums.IMPORTANCE = {
+            LOW: 1,
+            NORMAL: 500,
+            HIGH: 1000,
+            MIN: 0,
+            MAX: 1000
+        };
+        enums.IMPORTANCES = enumToArray(enums.IMPORTANCE);
+    
+        enums.CONFIDENTIALITY = {
+            PUBLIC: 0, // No sharing restrictions level - ANY, groups = yes, parties = yes
+            SENSITIVE: 1, // No public sharing - level >= OUTER, groups = yes, parties = yes
+            CLASSIFIED: 2, // Only selected parties - level = PRIVATE, groups = yes, parties = yes
+            SECRET: 3 // No sharing - level = PRIVATE, groups = no, parties = no
+        };
+        enums.CONFIDENTIALITIES = enumToArray(enums.CONFIDENTIALITY);
+    
+        enums.LEVEL = {
+            NONE: 0,
+            LOW: 1,
+            LOW_MEDIUM: 250,
+            MEDIUM: 500,
+            MEDIUM_HIGH: 750,
+            HIGH: 1000,
+            MIN: 0,
+            MAX: 1000
+        };
+    
+        enums.LANGUAGE = {
+            ENGLISH: 'en',
+            SPANISH: 'es',
+            PORTUGUESE: 'pt',
+            FRENCH: 'fr',
+            GERMAN: 'de',
+            RUSSIAN: 'ru'
+        };
+        enums.LANGUAGES = enumToArray(enums.LANGUAGE);
+    
+        enums.STAT_TYPE = {
+            DAILY: 'daily',
+            MONTHLY: 'monthly',
+            YEARLY: 'yearly',
+            TOTAL: 'total'
+        };
+        enums.STAT_TYPES = enumToArray(enums.STAT_TYPE);
+    
+        enums.STAT_BATCH_OPERATION = {
+            RECORD_SYSTEM_STATS: 'record system stats',
+            RECORD_PARTY_STATS: 'record party stats'
+        };
+    
+        enums.SERVER_TYPE = {
+            REALTIME_DB: 'r/t db master',
+            HISTORIAN_DB: 'db slave',
+            ANALYTICS: 'analytics',
+            BUSINESS_LOGIC: 'business logic',
+            REST_API: 'rest api',
+            STATIC_CONTENT: 'static content',
+            BACKUP_STORAGE: 'backup storage'
+        };
+        enums.SERVER_TYPES = enumToArray(enums.SERVER_TYPE);
+    
+        enums.SYSTEM_LOG_TYPE = {
+            INFO: 'info',
+            STOP: 'stop',
+            START: 'start',
+            RESTART: 'restart',
+            UPGRADE: 'upgrade',
+            MAINTENANCE: 'maintenance',
+            WARNING: 'warning',
+            ERROR: 'error'
+        };
+        enums.SYSTEM_LOG_TYPES = enumToArray(enums.SYSTEM_LOG_TYPE);
+    
+        enums.ACTIVITY_TYPE = {
+            SIGNUP: 'signup',
+            SIGNIN: 'signin',
+            PASSWORD_CHANGED: 'password changed',
+            PWD_RECOVERED: 'pwd recovered',
+            EMAIL_VERIFIED: 'email verified',
+            SETTINGS_CHANGED: 'settings changed',
+            PARTNERED: 'partnered',
+            TEAMED_UP: 'teamed up',
+            FOLLOWED: 'followed',
+            DISCONNECTED: 'disconnected',
+            CREATED: 'created',
+            UPDATED: 'updated',
+            DELETED: 'deleted',
+            ACCEPTED: 'accepted',
+            REJECTED: 'rejected',
+            JOINED: 'joined',
+            COMPLETED: 'completed',
+            CANCELED: 'canceled',
+            PROGRESS: 'progress',
+            POSTED: 'posted',
+            BUZZED: 'buzzed',
+            COMMENTED: 'commented',
+            CHEERED: 'cheered',
+            BOOED: 'booed'
+        };
+        enums.ACTIVITY_TYPES = enumToArray(enums.ACTIVITY_TYPE);
+    
+        enums.REFERENCE_TYPE = {
+            PARTY: 'party',
+            CONNECTION: 'connection',
+            CONTACT: 'contact',
+            MESSAGE: 'message',
+            NOTE: 'note',
+            AREA: 'area',
+            GOAL: 'goal',
+            EVENT: 'event',
+            VISION: 'vision',
+            COLLAGE: 'collage',
+            POST: 'post',
+            SUPPORT_CASE: 'support case',
+            ANNOUNCE: 'announce',
+            IMAGE_SET: 'image set',
+            FEEDBACK: 'feedback',
+            GUIDE: 'guide'
+        };
+        enums.REFERENCE_TYPES = enumToArray(enums.REFERENCE_TYPE);
+    
+        enums.CONTENT_TYPE = {
+            TEXT: 'text',
+            CHECKLIST: 'checklist',
+            LOCATION: 'location',
+            TIME: 'time',
+            PICTURES: 'pictures',
+            DOCUMENTS: 'documents'
+        };
+        enums.CONTENT_TYPES = enumToArray(enums.CONTENT_TYPE);
+    
+        enums.PARTY_TYPE = {
+            PERSON: 'person',
+            TEAM: 'team',
+            AGENT: 'agent'
+        };
+        enums.PARTY_TYPES = enumToArray(enums.PARTY_TYPE);
+    
+        enums.GENDER = {
+            MALE: 'male',
+            FEMALE: 'female',
+            NOT_SPECIFIED: 'n/s'
+        };
+        enums.GENDERS = enumToArray(enums.GENDER);
+    
+        enums.VISION_TYPE = {
+            OVERALL: 'overall',
+            ROLE: 'role',
+            MODEL: 'model',
+            TIME: 'time'
+        };
+        enums.VISION_TYPES = enumToArray(enums.VISION_TYPE);
+    
+        enums.AREA_TYPE = {
+            CATEGORY: 'category',
+            AREA: 'area'
+        };
+        enums.AREA_TYPES = enumToArray(enums.AREA_TYPE);
+    
+        enums.GOAL_TYPE = {
+            GOAL: 'goal',
+            OBJECTIVE: 'objective',
+            DREAM: 'dream',
+            //ASPIRATION: 'aspiration',
+            ACCOMPLISHMENT: 'accomplishment',
+            //CHORE: 'chore',
+            //HABIT: 'habit',
+            TASK: 'task',
+            ROUTINE: 'routine'
+        };
+        enums.GOAL_TYPES = enumToArray(enums.GOAL_TYPE);
+    
+        enums.PROCESS_NODE = {
+            START: 'start',
+            END: 'end',
+            EVENT: 'event',
+            AWAIT: 'await',
+            DECISION: 'decision',
+            ACTIVITY: 'activity'
+        };
+        enums.PROCESS_NODES = enumToArray(enums.PROCESS_NODE);
+    
+        enums.CALCULATION_METHOD = {
+            LAST_VALUE: 'last value',
+            SUM: 'sum',
+            MAX: 'max',
+            MIN: 'min',
+            AVERAGE: 'average'
+        };
+        enums.CALCULATION_METHODS = enumToArray(enums.CALCULATION_METHOD);
+    
+        enums.EXECUTION_STATUS = {
+            NEW: 'new',
+            ASSIGNED: 'assigned',
+            IN_PROGRESS: 'in progress',
+            VERIFYING: 'verifying',
+            ON_HOLD: 'on hold',
+            CANCELED: 'canceled',
+            COMPLETED: 'completed'
+        };
+        enums.EXECUTION_STATUSES = enumToArray(enums.EXECUTION_STATUS);
+    
+        enums.CONTRIBUTOR_ROLE = {
+            UNDEFINED: 'undefined',
+            RESPONSIBLE: 'responsible',
+            ACCOUNTABLE: 'accountable',
+            CONSULTED: 'consulted',
+            INFORMED: 'informed'
+        };
+        enums.CONSTRIBUTOR_ROLES = enumToArray(enums.CONTRIBUTOR_ROLE);
+    
+        enums.ACCEPTANCE = {
+            JOINED: 'joined',
+            INVITED: 'invited',
+            ACCEPTED: 'accepted'
+            //REJECTED: 'rejected'
+        };
+        enums.ACCEPTANCES = enumToArray(enums.ACCEPTANCE);
+    
+        enums.ACCEPT_ACTION = {
+            INVITE: 'invite',
+            JOIN: 'join',
+            ACCEPT: 'accept',
+            REJECT: 'reject'
+        };
+        enums.ACCEPT_ACTIONS = enumToArray(enums.ACCEPT_ACTION);
+    
+        enums.JOIN_METHOD = {
+            INVITE: 'invite',
+            APPROVE: 'approve',
+            OPEN: 'open'
+        };
+        enums.JOIN_METHODS = enumToArray(enums.JOIN_METHOD);
+    
+        enums.SKILL_LEVEL = {
+            NOVICE: 'novice',
+            INTERMEDIATE: 'intermediate',
+            ADVANCED: 'advanced',
+            EXPERT: 'expert'
+        };
+        enums.SKILL_LEVELS = enumToArray(enums.SKILL_LEVEL);
+    
+        enums.FEEDBACK_TYPE = {
+            SUPPORT: 'support',
+            TEAM: 'team',
+            MEETUP: 'meetup',
+            COPYRIGHT: 'copyright',
+            BUSINESS: 'business',
+            ADVERTISEMENT: 'ad'
+        };
+        enums.FEEDBACK_TYPES = enumToArray(enums.FEEDBACK_TYPE);
+    
+        enums.NOTE_CATEGORY = {
+            GENERAL: 'general',
+            UNFINISHED: 'unfinished',
+            ULTIMATE_TODO: 'ultimate todo'
+        };
+        enums.NOTE_CATEGORIES = enumToArray(enums.NOTE_CATEGORY);
+    
+        enums.CONNECTION_TYPE = {
+            PARTNER: 'partner',
+            MEMBER: 'member',
+            FOLLOW: 'follow',
+            AUTOMATION: 'automation'
+        };
+        enums.CONNECTION_TYPES = enumToArray(enums.CONNECTION_TYPE);
+    
+        enums.EVENT_TYPE = {
+            INSTANCE: 'instance',
+            RECURRENCE: 'recurrence',
+            AUTO_INSTANCE: 'auto',
+            TIME_ENTRY: 'time entry'
+        };
+        enums.EVENT_TYPES = enumToArray(enums.EVENT_TYPE);
+    
+        enums.EVENT_CATEGORY = {
+            DAILY: 'daily',
+            WEEKLY: 'weekly',
+            MONTHLY: 'monthly',
+            YEARLY: 'yearly'
+            //    COULDDO: 'coulddo'
+        };
+        enums.EVENT_CATEGORIES = enumToArray(enums.EVENT_CATEGORY);
+    
+        enums.COMMENT_TYPE = {
+            BUZZ: 'buzz',
+            CHEER: 'cheer',
+            BOO: 'boo',
+            COMMENT: 'comment'
+        };
+        enums.COMMENT_TYPES = enumToArray(enums.COMMENT_TYPE);
+    
+        enums.POST_TYPE = {
+            INFO: 'info',
+            QUESTION: 'question',
+            ISSUE: 'issue',
+            REPORT: 'report',
+            FORECAST: 'forecast'
+        };
+        enums.POST_TYPES = enumToArray(enums.POST_TYPE);
+    
+        enums.MESSAGE_TYPE = {
+            REGULAR: 'regular',
+            EMAIL: 'email',
+            INVITATION: 'invitation'
+        };
+        enums.MESSAGE_TYPES = enumToArray(enums.MESSAGE_TYPE);
+    
+        enums.NOTIFICATION_TYPE = {
+            GREETING: 'greeting',
+            MESSAGE: 'message',
+    
+            PARTNER_INVITE: 'partner invite',
+            PARTNER_RESPONSE_ACCEPTED: 'partner response accepted',
+            PARTNER_RESPONSE_REJECTED: 'partner response rejected',
+            PARTNER_JOINED: 'partner joined',
+            MEMBER_INVITE: 'member invite',
+            MEMBER_REQUEST: 'member request',
+            MEMBER_RESPONSE_ACCEPTED: 'member response accepted',
+            MEMBER_RESPONSE_REJECTED: 'member response rejected',
+            MEMBER_JOINED: 'member joined',
+            FOLLOWER_JOINED: 'follower joined',
+    
+            ENTITY_REQUEST: 'entity request',
+            ENTITY_REQUEST_ACCEPTED: 'entity request accepted',
+            ENTITY_REQUEST_REJECTED: 'entity request rejected',
+            ENTITY_INVITE: 'entity invite',
+            ENTITY_INVITE_ACCEPTED: 'entity invite accepted',
+            ENTITY_INVITE_REJECTED: 'entity invite rejected',
+            ENTITY_JOINED: 'entity joined',
+    
+            VERIFY_EMAIL: 'verify email',
+            COMPLETE_PROFILE: 'complete profile'
+        };
+        enums.NOTIFICATION_TYPES = enumToArray(enums.NOTIFICATION_TYPE);
+    
+        enums.NOTIFICATION_BATCH_OPERATION = {
+            CREATE: 'create',
+            REPLY: 'reply',
+            CLOSE: 'close',
+            DELETE: 'delete'
+        };
+    
+        enums.SUPPORT_CASE_CATEGORY = {
+            ACCOUNT: 'account',
+            BILLING: 'billing',
+            TECHNICAL: 'technical',
+            GENERAL: 'general'
+        };
+        enums.SUPPORT_CASE_CATEGORIES = enumToArray(enums.SUPPORT_CASE_CATEGORY);
+    
+        enums.ANNOUNCE_TYPE = {
+            APP: 'app',
+            EMAIL: 'email',
+            APP_AND_EMAIL: 'app and email'
+        };
+        enums.ANNOUNCE_TYPES = enumToArray(enums.ANNOUNCE_TYPE);
+    
+        enums.ANNOUNCE_CATEGORY = {
+            GENERAL: 'general',
+            MAINTENANCE: 'maintenance',
+            NEW_RELEASE: 'new release',
+            SURVEY: 'survey'
+        };
+        enums.ANNOUNCE_CATEGORIES = enumToArray(enums.ANNOUNCE_CATEGORY);
+    
+        enums.GUIDE_TYPE = {
+            INTRO: 'intro',
+            TOPIC: 'topic',
+            CONTEXT: 'context',
+            TIP: 'tip',
+            NEW_RELEASE: 'new release'
+        };
+        enums.GUIDE_TYPES = enumToArray(enums.GUIDE_TYPE);
+    
+        enums.EMAIL_TYPE = {
+            HOME: 'home',
+            WORK: 'work',
+            OTHER: 'other'
+        };
+        enums.EMAIL_TYPES = enumToArray(enums.EMAIL_TYPE);
+    
+        enums.ADDRESS_TYPE = {
+            HOME: 'home',
+            WORK: 'work',
+            OTHER: 'other'
+        };
+        enums.ADDRESS_TYPES = enumToArray(enums.ADDRESS_TYPE);
+    
+        enums.ADDRESS_TYPE = {
+            HOME: 'home',
+            WORK: 'work',
+            OTHER: 'other'
+        };
+        enums.ADDRESS_TYPES = enumToArray(enums.ADDRESS_TYPE);
+    
+        enums.PHONE_TYPE = {
+            MOBILE: 'mobile',
+            WORK: 'work',
+            HOME: 'home',
+            MAIN: 'main',
+            WORK_FAX: 'work fax',
+            HOME_FAX: 'home fax',
+            OTHER: 'other'
+        };
+        enums.PHONE_TYPES = enumToArray(enums.PHONE_TYPE);
+    
+        enums.MESSANGER_TYPE = {
+            SKYPE: 'skype',
+            GOOGLE_TALK: 'google talk',
+            AIM: 'aim',
+            YAHOO: 'yahoo',
+            QQ: 'qq',
+            MSN: 'msn',
+            ICQ: 'icq',
+            JABBER: 'jabber',
+            OTHER: 'other'
+        };
+        enums.MESSANGER_TYPES = enumToArray(enums.MESSANGER_TYPE);
+    
+        enums.WEB_ADDRESS_TYPE = {
+            PROFILE: 'profile',
+            BLOG: 'blog',
+            HOME_PAGE: 'home page',
+            WORK: 'work',
+            PORTFOLIO: 'portfolio',
+            OTHER: 'other'
+        };
+        enums.WEB_ADDRESS_TYPES = enumToArray(enums.WEB_ADDRESS_TYPE);
+    
+        enums.DASHBOARD_TILE_SIZE = {
+            SMALL: 'small',
+            WIDE: 'wide',
+            LARGE: 'large'
+        };
+        enums.DASHBOARD_TILE_SIZES = enumToArray(enums.DASHBOARD_TILE_SIZE);
+
+        return enums;
+    });
+    
+})();
+
+/**
+ * @file PipServices Rest API
+ * @copyright Digital Living Software Corp. 2014-2016
+ * @todo:
+ * - Separate application and administrative APIs
+ */
+
+(function () {
+    'use strict';
+
+    var thisModule = angular.module('pipRest', [
+        'ngResource',  
+        'pipRest.Enums', 'pipRest.Access',
+        'pipRest.Session', 'pipRest.State'
+    ]);
+
+    thisModule.provider('pipRest', ['$httpProvider', function($httpProvider) {
+        var serverUrl = '';
+        var serverUrlFixed = false;
+
+        // Set default API version
+        $httpProvider.defaults.headers.common['api-version'] = '1.0';
+
+
+        this.version = function (newVersion) {
+            if (newVersion)
+                $httpProvider.defaults.headers.common['api-version'] = newVersion;
+            return $httpProvider.defaults.headers.common['api-version'];
+        };
+
+        this.serverUrlFixed = function (value) {
+            if (value === true || value === 'on' )
+                serverUrlFixed = value;
+            return serverUrlFixed;
+        };
+
+        this.serverUrl = function (newServerUrl) {
+            if (newServerUrl)
+                serverUrl = newServerUrl;
+            return newServerUrl;
+        };
+
+        this.$get = ['$rootScope', '$http', '$resource', function ($rootScope, $http, $resource) {
+
+            function createResource(url, path, paramDefaults, actions) {
+                url = url || serverUrl;
+                return $resource(url + path, paramDefaults, actions);
+            };
+    
+            function createOperation(url, path) {
+                url = url || serverUrl;
+                return $resource(url + path, {},
+                    {
+                        call: {method: 'POST'}
+                    }
+                );
+            };
+    
+            function createCollection(url, path, paramDefaults) {
+                url = url || serverUrl;
+                return $resource(url + path,
+                    paramDefaults || { id: '@id' },
+                    {
+                        update: {method: 'PUT'}
+                    }
+                );
+            };
+    
+            function createPagedCollection(url, path, paramDefaults) {
+                url = url || serverUrl;
+                return $resource(url + path,
+                    paramDefaults || { id: '@id' },
+                    {
+                        page: {method: 'GET', isArray: false},
+                        update: {method: 'PUT'}
+                    }
+                );
+            };
+    
+            function createPartyCollection(url, path, paramDefaults) {
+                return createPagedCollection(url, path, paramDefaults ||
+                    {
+                        id: '@id',
+                        party_id: '@party_id'
+                    }
+                );
+            };
+
+            return {
+                version: function (newVersion) {
+                    if (newVersion)
+                        $httpProvider.defaults.headers.common['api-version'] = newVersion;
+                    return $httpProvider.defaults.headers.common['api-version'];
+                },
+
+                serverUrl: function (newServerUrl) {
+                    if (newServerUrl) {
+                        serverUrl = newServerUrl;
+                    }
+                    return serverUrl;
+                },
+
+                userId: function () {
+                    return $http.defaults.headers.common['user-id'];
+                },
+
+                serverUrlFixed: function() {
+                    return serverUrlFixed;
+                },
+
+                sessionId: function () {
+                    return $http.defaults.headers.common['session-id'];
+                },
+
+                // Used in routing
+                partyId: function ($stateParams) {
+                    return $stateParams.party_id || $http.defaults.headers.common['user-id'];
+                },
+
+                about: function (url) {
+                    return createResource(url, '/api/about');
+                },
+
+                session: function (userId, sessionId) {
+                    $http.defaults.headers.common['session-id'] = sessionId;
+                    $http.defaults.headers.common['user-id'] = userId;
+                },
+
+                signin: function (url) {
+                    return createOperation(url, '/api/signin');
+                },
+
+                signout: function (url) {
+                    return createOperation(url, '/api/signout');
+                },
+
+                signup: function (url) {
+                    return createOperation(url, '/api/signup');
+                },
+
+                recoverPassword: function (url) {
+                    return createOperation(url, '/api/recover_password');
+                },
+
+                resetPassword: function (url) {
+                    return createOperation(url, '/api/reset_password');
+                },
+
+                changePassword: function (url) {
+                    return createOperation(url, '/api/change_password');
+                },
+
+                requestEmailVerification: function (url) {
+                    return createCollection(url, '/api/users/:party_id/resend_email_verification');
+                },
+
+                verifyEmail: function (url) {
+                    return createOperation(url, '/api/verify_email');
+                },
+
+                signupValidate: function (url) {
+                    return createOperation(url, '/api/signup_validate');
+                },
+
+                users: function (url) {
+                    return createPagedCollection(url, '/api/users/:id');
+                },
+
+                currentUser: function (url) {
+                    return createResource(url, '/api/users/current',
+                        {},
+                        {
+                            get: {method: 'GET', isArray: false}
+                        }
+                    );
+                },
+
+                userSessions: function (url) {
+                    return createPartyCollection(url, '/api/users/:party_id/sessions/:id');
+                },
+
+
+                parties: function (url) {
+                    return createPagedCollection(url, '/api/parties/:id');
+                },
+
+                //
+                // inviteParty: function (url) {
+                //     return createPagedCollection(url, '/api/parties/:id/invite');
+                // },
+                //
+                // partyActivities: function (url) {
+                //     return createPartyCollection(url, '/api/parties/:party_id/activities');
+                // },
+                //
+                partySettings: function (url) {
+                    return createPartyCollection(url, '/api/parties/:party_id/settings');
+                },
+                //
+                // partyTags: function (url) {
+                //     return createPartyCollection(url, '/api/parties/:party_id/tags');
+                // },
+
+                serverActivities: function (url) {
+                    return createPagedCollection(url, '/api/servers/activities/:id');
+                },
+
+                // connectionBlocks: function (url) {
+                //     return createPartyCollection(url, '/api/parties/:party_id/blocks/:id');
+                // },
+                //
+                // connectionSuggestions: function (url) {
+                //     return createCollection(url, '/api/parties/:party_id/connections/suggestions',
+                //         {
+                //             party_id: '@party_id'
+                //         }
+                //     );
+                // },
+                //
+                
+                // TBD: REFACTOR SESSION_CACHE AND MOVE OUT OF HERE
+                connections: function (url) {
+                    return createPartyCollection(url, '/api/parties/:party_id/connections/:id');
+                },
+                //
+                // // Todo: Deprecated operation
+                // managedConnections: function (url) {
+                //     return createPartyCollection(url, '/api/parties/:party_id/connections/managed');
+                // },
+                //
+                // // Todo: Deprecated operation. Use party_access from user object instead
+                // collaborators: function (url) {
+                //     return createCollection(url, '/api/parties/:party_id/collaborators/:to_party_id',
+                //         {
+                //             to_party_id: '@to_party_id',
+                //             party_id: '@party_id'
+                //         }
+                //     );
+                // },
+                //
+                // partners: function (url) {
+                //     return createPartyCollection(url, '/api/parties/:party_id/partners/:id');
+                // },
+                //
+                // acceptPartner: function (url) {
+                //     return createPartyCollection(url, '/api/parties/:party_id/partners/:id/accept');
+                // },
+                //
+                // members: function (url) {
+                //     return createPartyCollection(url, '/api/parties/:party_id/members/:id');
+                // },
+                //
+                // acceptMember: function (url) {
+                //     return createPartyCollection(url, '/api/parties/:party_id/members/:id/accept');
+                // },
+                //
+                // following: function (url) {
+                //     return createPartyCollection(url, '/api/parties/:party_id/following/:id');
+                // },
+                //
+                // followers: function (url) {
+                //     return createPartyCollection(url, '/api/parties/:party_id/followers/:id');
+                // },
+                //
+                // groups: function (url) {
+                //     return createPartyCollection(url, '/api/parties/:party_id/groups/:id');
+                // },
+                //
+                // contacts: function (url) {
+                //     return createPartyCollection(url, '/api/parties/:party_id/contacts/:id');
+                // },
+                //
+                // getOwnContacts: function (url) {
+                //     return createPartyCollection(url, '/api/parties/:party_id/contacts/own');
+                // },
+                //
+                // quotes: function (url) {
+                //     return createPagedCollection(url, '/api/quotes/:id');
+                // },
+                //
+                // randomQuote: function (url) {
+                //     return createResource(url, '/api/quotes/random');
+                // },
+                //
+                guides: function (url) {
+                    return createPagedCollection(url, '/api/guides/:id');
+                },
+
+                tips: function (url) {
+                    return createPagedCollection(url, '/api/tips/:id');
+                },
+
+                image_sets: function (url) {
+                    return createPagedCollection(url, '/api/image_sets/:id');
+                },
+
+                images: function (url) {
+                    return createPagedCollection(url, '/api/images/search');
+                },
+
+                // notes: function (url) {
+                //     return createPartyCollection(url, '/api/parties/:party_id/notes/:id');
+                // },
+                //
+                // // Todo: This operation is deprecated. Use contributors management instead
+                // sendNote: function (url) {
+                //     return createPartyCollection(url, '/api/parties/:party_id/notes/:id/send');
+                // },
+
+                feedbacks: function (url) {
+                    return createPartyCollection(url, '/api/feedbacks/:id');
+                },
+
+                // feeds: function (url) {
+                //     return createPartyCollection(url, '/api/parties/:party_id/feeds/:id');
+                // },
+
+                // publicPosts: function (url) {
+                //     return createCollection(url, '/api/posts/:id');
+                // },
+                //
+                // posts: function (url) {
+                //     return createPartyCollection(url, '/api/parties/:party_id/posts/:id');
+                // },
+                //
+                // allFeedPosts: function (url) {
+                //     return createPartyCollection(url, '/api/parties/:party_id/feeds/posts/:id');
+                // },
+                //
+                // feedPosts: function (url) {
+                //     return createPartyCollection(url, '/api/parties/:party_id/feeds/:feed_id/posts/:id',
+                //         {
+                //             id: '@id',
+                //             party_id: '@party_id',
+                //             feed_id: '@feed_id'
+                //         }
+                //     );
+                // },
+                //
+                // // Todo: Move under party  /api/parties/:party_id/posts/:post_id/comments
+                // postComments: function (url) {
+                //     return createCollection(url, '/api/parties/:party_id/posts/:id/comments/:comment_id',
+                //         {
+                //             party_id: '@party_id',
+                //             id: '@id',
+                //             comment_id: '@comment_id'
+                //         }
+                //     );
+                // },
+                //
+                // postCheers: function (url) {
+                //     return createPartyCollection(url, '/api/parties/:party_id/posts/:post_id/cheers',
+                //         {
+                //             party_id: '@party_id',
+                //             post_id: '@post_id'
+                //         }
+                //     );
+                // },
+                //
+                // postBoos: function (url) {
+                //     return createPartyCollection(url, '/api/parties/:party_id/posts/:post_id/boos',
+                //         {
+                //             party_id: '@party_id',
+                //             post_id: '@post_id'
+                //         }
+                //     );
+                // },
+                //
+                // events: function (url) {
+                //     return createPartyCollection(url, '/api/parties/:party_id/events/:id');
+                // },
+                //
+                // acceptEvent: function (url) {
+                //     return createPartyCollection(url, '/api/parties/:party_id/events/:id/accept');
+                // },
+                //
+                // rejectEvent: function (url) {
+                //     return createPartyCollection(url, '/api/parties/:party_id/events/:id/reject');
+                // },
+                //
+                // acceptVision: function (url) {
+                //     return createPartyCollection(url, '/api/parties/:party_id/visions/:id/accept');
+                // },
+                //
+                // rejectVision: function (url) {
+                //     return createPartyCollection(url, '/api/parties/:party_id/visions/:id/reject');
+                // },
+                //
+                // messages: function (url) {
+                //     return createPartyCollection(url, '/api/parties/:party_id/messages/:id');
+                // },
+                //
+                // receivedMessages: function (url) {
+                //     return createPartyCollection(url, '/api/parties/:party_id/messages/received',
+                //         {
+                //             party_id: '@party_id'
+                //         }
+                //     );
+                // },
+                //
+                // receivedManagedMessages: function (url) {
+                //     return createCollection(url, '/api/parties/:party_id/messages/received/managed',
+                //         {
+                //             party_id: '@party_id'
+                //         }
+                //     );
+                // },
+                //
+                // sentMessages: function (url) {
+                //     return createCollection(url, '/api/parties/:party_id/messages/sent',
+                //         {
+                //             party_id: '@party_id'
+                //         }
+                //     );
+                // },
+                //
+                // viewMessage: function (url) {
+                //     return createPartyCollection(url, '/api/parties/:party_id/messages/:id/view');
+                // },
+                //
+                // sentManagedMessages: function (url) {
+                //     return createCollection(url, '/api/parties/:party_id/messages/sent/managed',
+                //         {
+                //             party_id: '@party_id'
+                //         }
+                //     );
+                // },
+                //
+                // notifications: function (url) {
+                //     return createCollection(url, '/api/parties/:party_id/notifications',
+                //         {
+                //             party_id: '@party_id'
+                //         }
+                //     );
+                // },
+                //
+                // // Todo: Add party?
+                // managedNotifications: function (url) {
+                //     return createCollection(url, '/api/parties/:party_id/notifications/managed', {
+                //         party_id: '@party_id'
+                //     });
+                // },
+                //
+                // areas: function (url) {
+                //     return createPartyCollection(url, '/api/parties/:party_id/areas/:id');
+                // },
+                //
+                // acceptArea: function (url) {
+                //     return createPartyCollection(url, '/api/parties/:party_id/areas/:id/accept');
+                // },
+                //
+                // rejectArea: function (url) {
+                //     return createPartyCollection(url, '/api/parties/:party_id/areas/:id/reject');
+                // },
+                //
+                // goals: function (url) {
+                //     return createPartyCollection(url, '/api/parties/:party_id/goals/:id');
+                // },
+                //
+                // acceptGoal: function (url) {
+                //     return createPartyCollection(url, '/api/parties/:party_id/goals/:id/accept');
+                // },
+                //
+                // rejectGoal: function (url) {
+                //     return createPartyCollection(url, '/api/parties/:party_id/goals/:id/reject');
+                // },
+                //
+                // visions: function (url) {
+                //     return createPartyCollection(url, '/api/parties/:party_id/visions/:id');
+                // },
+                //
+                // // Todo: This one doesn't exist on the server
+                // collages: function (url) {
+                //     return createPartyCollection(url, '/api/parties/:party_id/collages/:id');
+                // },
+                //
+                // partySupportCases: function (url) {
+                //     return createPartyCollection(url, '/api/parties/:party_id/support_cases/:id');
+                // },
+                //
+                // supportCases: function (url) {
+                //     return createPagedCollection(url, '/api/support_cases/:id');
+                // },
+
+                announces: function (url) {
+                    return createPagedCollection(url, '/api/announcements/:id');
+                },
+
+                // stats: function (url) {
+                //     return createPagedCollection(url, '/api/parties/:party_id/counters');
+                // },
+                //
+                // eventContribManage: function (url) {
+                //     return createPagedCollection(url, '/api/parties/:party_id/events/:id/manage_contrib',
+                //         {
+                //             id: '@id',
+                //             party_id: '@party_id'
+                //         }
+                //     );
+                // },
+                //
+                // areaContribManage: function (url) {
+                //     return createPagedCollection(url, '/api/parties/:party_id/areas/:id/manage_contrib',
+                //         {
+                //             id: '@id',
+                //             party_id: '@party_id'
+                //         }
+                //     );
+                // },
+                //
+                // goalContribManage: function (url) {
+                //     return createPagedCollection(url, '/api/parties/:party_id/goals/:id/manage_contrib',
+                //         {
+                //             id: '@id',
+                //             party_id: '@party_id'
+                //         }
+                //     );
+                // },
+                //
+                // visionContribManage: function (url) {
+                //     return createPagedCollection(url, '/api/parties/:party_id/visions/:id/manage_contrib',
+                //         {
+                //             id: '@id',
+                //             party_id: '@party_id'
+                //         }
+                //     );
+                // },
+                //
+                // noteContribManage: function (url) {
+                //     return createPagedCollection(url, '/api/parties/:party_id/notes/:id/manage_contrib',
+                //         {
+                //             id: '@id',
+                //             party_id: '@party_id'
+                //         }
+                //     );
+                // },
+
+                // for testing
+                //--------------
+
+                createResource: createResource,
+                createOperation: createOperation,
+                createCollection: createCollection,
+                createPagedCollection: createPagedCollection,
+                createPartyCollection: createPartyCollection
+
+            };
+        }];
+    }]);
+
+})();
+
+/**
+ * @file Session service for PipServices Rest API
+ * @copyright Digital Living Software Corp. 2014-2016
+ */
+
+(function () {
+    'use strict';
+
+    var thisModule = angular.module('pipRest.Session', ['ngCookies', 'pipRest']);
+
+    thisModule.run(['pipSession', function(pipSession) {
+        // Reload session to avoid signin
+        pipSession.reopen();
+    }]);
+
+    thisModule.factory('pipSession', 
+        ['$rootScope', '$http', 'localStorageService', '$cookieStore', 'pipRest', 'pipTimer', function ($rootScope, $http, localStorageService, $cookieStore, pipRest, pipTimer) {
+            var 
+                currentOperation = undefined,
+                sessionId, userId, serverUrl;
+
+            return {
+                opened: opened,
+                userId: getUserId,
+                sessionId: getSessionId,
+                serverUrl: getServerUrl,
+
+                lastUsedEmail: lastUsedEmail,
+                //lastUsedPassword: lastUsedPassword,
+                usedServers: usedServers,
+                usedServerUrls: usedServerUrls,
+
+                signin: signin,
+                abort: abort,
+                signout: signout,
+
+                open: open,
+                close: close,
+                reopen: reopen
+            };
+            //-----------------------
+
+            // Session Ids
+            //---------------
+
+            function getUserId() {
+                return userId;
+            };
+
+            function getSessionId() {
+                return sessionId;  
+            };
+
+            function getServerUrl() {
+                return serverUrl || localStorageService.get('serverUrl');
+            };
+
+            function opened() {
+                var isOpened = (sessionId !== '' && sessionId !== null && sessionId !== undefined) &&
+                    (userId !== '' && userId !== null && userId !== undefined) &&
+                    (serverUrl !== '' && serverUrl !== null && serverUrl !== undefined);
+
+                return isOpened;
+            };
+
+            // Saved connection settings
+            //----------------------------
+            
+            function lastUsedEmail(serverUrl) {
+                var servers = localStorageService.get('servers');
+                if (servers && servers[serverUrl]) {
+                    return servers[serverUrl].email;
+                }
+                return undefined;
+            };
+
+            function usedServers() {
+                return localStorageService.get('servers') || {};
+            };
+
+            function usedServerUrls() {
+                var 
+                    servers = localStorageService.get('servers'),
+                    serverUrls = [], serverUrl;
+                        
+                for (var prop in servers) {
+                    if (servers.hasOwnProperty(prop)) {
+                        serverUrl = servers[prop].serverUrl;
+                        if (serverUrl) {
+                            serverUrls.push(serverUrl);
+                        }
+                    }
+                }
+
+                return serverUrls;
+            };
+
+            // Session management
+            //---------------------
+
+            function signin(params, successCallback, errorCallback) {
+                var 
+                    serverUrl = params.serverUrl,
+                    email = params.email,
+                    password = params.password,
+                    remember = params.remember,
+                    adminOnly = !!params.adminOnly,
+                    thisOperation = new Date().getTime();
+
+                currentOperation = thisOperation;
+
+                $http.defaults.headers.common['session-id'] = undefined;
+                $http.defaults.headers.common['user-id'] = undefined;
+                $http.defaults.headers.common['account-id'] = undefined;
+
+                pipRest.signin(serverUrl).call(
+                    { 
+                        email: email, 
+                        password: password,
+                        remember: remember
+                    },
+                    function(user) {
+                        if (currentOperation != thisOperation) {
+                            return;
+                        } else {
+                            currentOperation = undefined;
+
+                            if (adminOnly && !user.admin) {
+                                errorCallback('ERROR_ADMIN_ONLY_ACCESS');
+                            } else {
+                                open(serverUrl, user, remember);
+                                $rootScope.$broadcast('pipAutoPullChanges');
+                                successCallback(user);
+                            }
+                        }
+                    }, 
+                    function(error) {
+                        if (currentOperation != thisOperation) {
+                            return;
+                        } else {
+                            currentOperation = undefined;
+                            errorCallback(error);   
+                        }
+                    }
+                );
+            };
+
+            function signup(params, successCallback, errorCallback) {
+                var 
+                    serverUrl = params.serverUrl,
+                    name = params.name,
+                    email = params.email,
+                    password = params.password,
+                    language = params.language,
+                    remember = false,
+                    thisOperation = new Date().getTime();
+
+                pipRest.signup(serverUrl).call(
+                    {
+                        name: name,
+                        email: email,
+                        password: password,
+                        language: language
+                    },
+                    function(user) {
+                        if (currentOperation != thisOperation) {
+                            return;
+                        } else {
+                            currentOperation = undefined;
+
+                            open(serverUrl, user, remember);
+                            successCallback(user);
+                        }
+                    }, 
+                    function(error) {
+                        if (currentOperation != thisOperation) {
+                            return;
+                        } else {
+                            currentOperation = undefined;
+                            errorCallback(error);   
+                        }
+                    }
+                );
+            };
+
+            function abort() {
+                currentOperation = undefined;
+            };
+
+            function signout(callback) {
+                if (opened()) {
+                    pipRest.signout().call({}, callback, callback);
+                }
+
+                close();
+            };
+
+            function open(currentServerUrl, user, remember) {
+                sessionId = user.last_session_id;
+                userId = user.id;
+                serverUrl = currentServerUrl;
+
+                // Set default headers for subsequent HTTP requests
+                $http.defaults.headers.common['session-id'] = sessionId;
+                $http.defaults.headers.common['user-id'] = userId;
+
+                // Save ids into local storage
+                if (remember) {
+                    var servers = localStorageService.get('servers') || {};
+                    servers[serverUrl] = {
+                        serverUrl: serverUrl,
+                        email: user.email
+                    };
+                    localStorageService.set('servers', servers);
+
+                    localStorageService.set('sessionId', sessionId);
+                    localStorageService.set('userId', userId);
+                    localStorageService.set('serverUrl', serverUrl);
+                }
+
+                // Save into session id to retain the connection while browser is running
+                // Remove from cookie store
+                $cookieStore.put('user-id', userId);
+                $cookieStore.put('session-id', sessionId);
+                $cookieStore.put('server-url', serverUrl);
+
+                // Save context parameters do not save
+                if (!pipRest.serverUrlFixed()) pipRest.serverUrl(serverUrl);
+                
+                // Send broadcast
+                // saveSession data
+                $rootScope.$emit(
+                    'pipSessionOpened', 
+                    { 
+                        serverUrl: serverUrl,
+                        sessionId: sessionId,
+                        userId: userId,
+                        user: user
+                    }
+                );
+                pipTimer.start();
+            };
+
+            function reopen() {
+                userId = $cookieStore.get('user-id') || localStorageService.get('userId');
+                sessionId = $cookieStore.get('session-id') || localStorageService.get('sessionId');
+                serverUrl = $cookieStore.get('server-url') || localStorageService.get('serverUrl');
+
+                // Set default headers for subsequent HTTP requests
+                $http.defaults.headers.common['session-id'] = sessionId;
+                $http.defaults.headers.common['user-id'] = userId;
+
+                if (!pipRest.serverUrlFixed() || !pipRest.serverUrl()) pipRest.serverUrl(serverUrl);
+                $rootScope.$serverUrl = pipRest.serverUrl();
+                // Send broadcast
+                $rootScope.$emit(
+                    'pipSessionOpened', 
+                    { 
+                        serverUrl: serverUrl,
+                        sessionId: sessionId,
+                        userId: userId
+                    }
+                );
+
+            };
+
+            function close() {
+                sessionId = undefined;
+                userId = undefined;
+                        
+                // Unset default headers for subsequent HTTP requests
+                $http.defaults.headers.common['session-id'] = undefined;
+                $http.defaults.headers.common['user-id'] = undefined;
+
+                // Remove ids into local storage
+                localStorageService.remove('userId');
+                localStorageService.remove('sessionId');
+
+                // Remove from cookie store
+                $cookieStore.remove('user-id');
+                $cookieStore.remove('session-id');
+
+                // RemoveToastMessages
+                pipTimer.stop();
+
+                // Send broadcast
+                // RemoveToastMessages
+                $rootScope.$emit('pipSessionClosed');
+            };
+        }]
+    );
 
 })();
 //# sourceMappingURL=pip-webui-rest.js.map

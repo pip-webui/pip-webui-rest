@@ -97,24 +97,24 @@
 
             function onLanguageClick(language) {
                 pipTranslate.use(language);
-            };
+            }
 
             function onThemeClick(theme) {
                 $rootScope.$theme = theme;
-            };
+            }
 
             function onSwitchPage(state) {
                 $mdSidenav('left').close();
                 $state.go(state);
-            };
+            }
             
             function onToggleMenu() {
                 $mdSidenav('left').toggle();
-            };
+            }
                         
             function isActiveState(state) {
                 return $state.current.name == state;  
-            };
+            }
 
             function openConnection() {
                 pipSession.signin(
@@ -152,8 +152,7 @@
                         }
                     }
                 );
-            };
-
+            }
         }
     );
 

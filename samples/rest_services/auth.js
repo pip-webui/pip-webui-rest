@@ -57,13 +57,13 @@
     thisModule.controller('AuthController',
         function($scope, $rootScope, pipRest, pipSession) {
 
-            $scope.page = "AuthController";
+            $scope.page = "Auth Controller";
             $scope.processing = false;
 
             $scope.signOut = signOut;
             $scope.userState = pipSession.opened() ? 'SignIn': 'SignOut';
 
-            return ;
+            return;
 
             function signOut() {
                 $scope.processing = true;
@@ -74,7 +74,7 @@
                         $scope.processing = false;
                     }
                 );
-            };
+            }
 
         }
     );
@@ -82,7 +82,7 @@
     thisModule.controller('SigninController',
         function($scope, $rootScope, pipRest, pipSession, pipTestAccount, pipAuthState, $state) {
 
-            $scope.page = "SigninController";
+            $scope.page = "Signin Controller";
             $scope.processing = false;
 
             $scope.serverUrl = pipTestAccount.getServerUrl();
@@ -93,7 +93,7 @@
             $scope.signIn = signIn;
             $scope.userState = pipSession.opened() ? 'SignIn': 'SignOut';
 
-            return ;
+            return;
 
             function signIn() {
                 $scope.processing = true;
@@ -118,9 +118,7 @@
                         $scope.processing = false;
                     }
                 );
-            };
-
-
+            }
 
         }
     );
@@ -128,10 +126,10 @@
     thisModule.controller('FirstAuthController',
         function($scope, $state) {
 
-            $scope.page = "FirstAuthController";
+            $scope.page = "First Auth Controller";
             $scope.processing = false;
 
-            return ;
+            return;
 
         }
     );
@@ -140,14 +138,14 @@
     thisModule.controller('SecondAuthController',
         function($scope, $state, $rootScope, pipRest, pipSession) {
 
-            $scope.page = "SecondAuthController";
+            $scope.page = "Second Auth Controller";
             $scope.processing = false;
 
             $scope.expired = expired;
             $scope.goToFirst = goToFirst;
             $scope.onGetNotes = onGetNotes;
 
-            return ;
+            return;
 
             function expired() {
                 $scope.processing = true;
@@ -157,14 +155,14 @@
                         $scope.processing = false;
                     }
                 );
-            };
+            }
 
             function goToFirst() {
                 $state.go('first_page', {
                     name: 'new name',
                     url: $scope.expired
                 });
-            };
+            }
 
             function onGetNotes() {
                 pipRest.notes().query(
@@ -179,7 +177,7 @@
                         $scope.processing = false;
                     }
                 );
-            };
+            }
 
         }
     );

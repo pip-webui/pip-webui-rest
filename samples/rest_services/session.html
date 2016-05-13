@@ -17,12 +17,12 @@
         <md-card-actions >
             <div layout="row" layout-align="end center">
                 <md-button class="md-raised md-primary"
-                           ng-disabled="processing"
+                           ng-disabled="processing || $user.name"
                            ng-click="signIn()">
                     SignIn
                 </md-button>
                 <md-button class="md-raised md-primary"
-                           ng-disabled="processing"
+                           ng-disabled="processing || !$user.name"
                            ng-click="signOut()">
                     SignOut
                 </md-button>

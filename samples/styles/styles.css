@@ -8,6 +8,9 @@
 .p16 { padding: 16px; }
 .p8 { padding: 8px; }
 
+.bm16 { margin-bottom: 16px; }
+.lm10 { margin-left: 10px !important; }
+
 .selected-state {
 	background-color: rgba(0, 0, 0, 0.1);
 }

@@ -16,7 +16,7 @@
             'ui.router', 'ui.utils', 'ngResource', 'ngAria', 'ngCookies', 'ngSanitize', 'ngMessages',
             'ngMaterial', 'wu.masonry', 'LocalStorageModule', 'angularFileUpload', 'ngAnimate', 
 			'pipCore', 'pipRest', 'pipData', 'pipSessionCache',
-            'pipWebuiTests', 'pipErrorHandling',
+            'pipWebuiTests',
             // Sample Application Modules
             'appRestServices.Rest',  'appRestServices.Session',  'appRestServices.Auth',  'appRestServices.Cache'
 
@@ -54,7 +54,7 @@
     );
 
     thisModule.controller('AppController', 
-        function ($scope, $rootScope, $state, $mdSidenav, pipTranslate, pipSession, pipRest, pipToasts, pipTestAccount) {
+        function ($scope, $rootScope, $state, $mdSidenav, pipTranslate, pipSession, pipRest, pipTestAccount) {
             $scope.languages = ['en', 'ru'];
             $scope.themes = ['blue', 'green', 'pink', 'grey'];
 
@@ -97,24 +97,24 @@
 
             function onLanguageClick(language) {
                 pipTranslate.use(language);
-            };
+            }
 
             function onThemeClick(theme) {
                 $rootScope.$theme = theme;
-            };
+            }
 
             function onSwitchPage(state) {
                 $mdSidenav('left').close();
                 $state.go(state);
-            };
+            }
             
             function onToggleMenu() {
                 $mdSidenav('left').toggle();
-            };
+            }
                         
             function isActiveState(state) {
                 return $state.current.name == state;  
-            };
+            }
 
             function openConnection() {
                 pipSession.signin(
@@ -124,7 +124,7 @@
                         password: $scope.sampleAccount.password
                     },
                     function(user) {
-                        pipToasts.showNotification('Signed in as ' + user.name, ['ok'])
+                       // pipToasts.showNotification('Signed in as ' + user.name, ['ok'])
                     },
                     function(err) {
                         console.error(err);
@@ -141,19 +141,18 @@
                                 },
                                 function (user) {
                                     pipSession.open($scope.serverUrl, user, false);
-                                    pipToasts.showNotification('Signed up as ' + user.name, ['ok'])                        
+                                  //  pipToasts.showNotification('Signed up as ' + user.name, ['ok'])
                                 },
                                 function (error) {
-                                    pipToasts.showError('Failed to signed in');
+                                   // pipToasts.showError('Failed to signed in');
                                 }
                             );
                         } else {
-                            pipToasts.showError('Failed to signed in');
+                           // pipToasts.showError('Failed to signed in');
                         }
                     }
                 );
-            };
-
+            }
         }
     );
 

@@ -43,8 +43,8 @@
                            ng-click="signOut()">
                     SignOut
                 </md-button>
-                <md-button class="md-raised md-primary"
-                           ng-disabled="processing"
+                <md-button class="md-raised md-primary lm10"
+                           ng-disabled="processing || $user.name"
                            ui-sref="signin">
                     SignIn page
                 </md-button>

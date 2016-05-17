@@ -11,19 +11,20 @@
     var thisModule = angular.module('pipDataModel', ['pipUtils', 'pipRest']);
 
     thisModule.provider('pipDataModel', function() {
+        
         this.$get = function($stateParams, pipCollections, pipRest) {
 
             var api = [];
-
+            
             for (var call in pipRest) {
                 api[call] = pipRest[call];
             }
 
-            function extendApi(extension) {
-                for (var call in extension) {
-                    api[call] = extension[call];
-                }
-            }
+            // function extendApi(extension) {
+            //     for (var call in extension) {
+            //         api[call] = extension[call];
+            //     }
+            // }
 
             // Execute request to REST API
             function executeCurl(params, successCallback, errorCallback) {
@@ -320,7 +321,7 @@
             };
 
             return {
-                extendApi: extendApi,
+                // extendApi: extendApi,
 
                 // Executing transactional requests to server
                 execute: executeCurl,

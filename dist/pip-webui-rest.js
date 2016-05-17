@@ -617,6 +617,1202 @@
 
 
 /**
+ * @file Announces data model
+ * @copyright Digital Living Software Corp. 2014-2016
+ */
+ 
+ /* global angular */
+ 
+(function () {
+    'use strict';
+
+    var thisModule = angular.module('pipAnnouncesData', ['pipRest', 'pipDataModel']);
+
+    thisModule.provider('pipAnnouncesData', function () {
+
+        // Read all announces
+        this.readAnnouncesResolver = function () {
+            return /* @ngInject */ ['$stateParams', 'pipRest', 'pipEnums', function ($stateParams, pipRest, pipEnums) {
+                return pipRest.announces().query().$promise;
+            }];
+        };
+
+        this.readCompletedAnnouncesResolver = function () {
+            return /* @ngInject */ ['$stateParams', 'pipRest', 'pipEnums', function ($stateParams, pipRest, pipEnums) {
+                return pipRest.announces().query( {
+                        status: pipEnums.EXECUTION_STATUS.COMPLETED
+                    }
+                ).$promise;
+            }];
+        };
+
+        this.readAnnounceResolver = function () {
+            return /* @ngInject */ ['$stateParams', 'pipRest', function ($stateParams, pipRest) {
+                return pipRest.announces().get({
+                    id: $stateParams.id
+                }).$promise;
+            }];
+        };
+
+        // CRUD operations and other business methods
+        this.$get = ['pipRest', '$stateParams', 'pipDataModel', function (pipRest, $stateParams, pipDataModel) {
+            return {
+                partyId: pipRest.partyId,
+
+                updateAnnounce: function (params, successCallback, errorCallback) {
+                    params.resource = 'announces';
+                    params.skipTransactionBegin = true;
+                    params.skipTransactionEnd = false;
+                    pipDataModel.update(
+                        params,
+                        successCallback,
+                        errorCallback
+                    );
+                },
+                
+                updateAnnounceWithFiles: function(params, successCallback, errorCallback) {
+                    params.skipTransactionEnd = true;
+                    pipDataModel.saveFiles(params, function() {
+                        params.resource = 'announces';
+                        params.skipTransactionBegin = true;
+                        params.skipTransactionEnd = false;
+                        pipDataModel.update(
+                            params,
+                            successCallback,
+                            errorCallback
+                        );
+                    });
+                },
+
+                createAnnounceWithFiles: function(params, successCallback, errorCallback) {
+                    params.skipTransactionEnd = true;
+                    pipDataModel.saveFiles(params, function() {
+                        params.resource = 'announces';
+                        params.skipTransactionBegin = true;
+                        params.skipTransactionEnd = false;
+                        pipDataModel.create(
+                            params,
+                            successCallback,
+                            errorCallback
+                        );
+                    });
+                },
+                
+                createAnnounce: function (params, successCallback, errorCallback) {
+                    params.resource = 'announces';
+                    params.skipTransactionBegin = true;
+                    params.skipTransactionEnd = false;
+                    pipDataModel.create(
+                        params,
+                        successCallback,
+                        errorCallback
+                    );
+                },
+
+                deleteAnnounce: function(params, successCallback, errorCallback) {
+                    params.resource = 'announces';
+                    pipDataModel.remove(params, successCallback, errorCallback);
+                }
+            }
+        }];
+    });
+
+})();
+/**
+ * @file Registration of all data modules
+ * @copyright Digital Living Software Corp. 2014-2016
+ */
+
+/* global angular */
+
+(function () {
+    'use strict';
+
+    angular.module('pipData', [
+		'pipDataModel',
+		'pipDataCache',
+        
+        'pipUsersData',
+        'pipSettingsData',
+        'pipSessionData',
+        'pipTagsData',
+
+        'pipAnnouncesData',
+        'pipFeedbacksData',
+        'pipGuidesData',
+        'pipImageSetsData',
+        'pipTipsData'
+    ]);
+    
+})();
+/**
+ * @file Application abstract data model
+ * @copyright Digital Living Software Corp. 2014-2016
+ */
+
+/* global angular, _, async */
+
+(function () {
+    'use strict';
+
+    var thisModule = angular.module('pipDataModel', ['pipUtils', 'pipRest']);
+
+    thisModule.provider('pipDataModel', function() {
+        
+        this.$get = ['$stateParams', 'pipCollections', 'pipRest', function($stateParams, pipCollections, pipRest) {
+
+            var api = [];
+            
+            for (var call in pipRest) {
+                api[call] = pipRest[call];
+            }
+
+            // function extendApi(extension) {
+            //     for (var call in extension) {
+            //         api[call] = extension[call];
+            //     }
+            // }
+
+            // Execute request to REST API
+            function executeCurl(params, successCallback, errorCallback) {
+                var t = params.transaction, tid;
+
+                if (t && !params.skipTransactionBegin) {
+                    tid = params.transactionId = t.begin(
+                        params.transactionOperation || 'PROCESSING'
+                    );
+                    if (!tid) return;
+                }
+
+                return api[params.resource]()[params.operation](
+                    params.item,
+                    function (result) {
+                        if (t && tid && t.aborted(tid)) return;
+                        if (t && !params.skipTransactionEnd) t.end();
+                        if (successCallback) successCallback(result);
+                    },
+                    function (error) {
+                        if (t) t.end(error);
+                        if (errorCallback) errorCallback(error);
+                    }
+                );
+            };
+
+            // Create an object and add it to object collection
+            function createCurl(params, successCallback, errorCallback) {
+                params.transactionOperation = params.transactionOperation || 'SAVING';
+                params.operation = params.operation || 'save';
+                
+                return executeCurl(
+                    params,
+                    function(result) {
+                        if (params.itemCollection)
+                            params.itemCollection.push(result);
+
+                        if (successCallback) successCallback(result);
+                    },
+                    function(error){
+                        if (errorCallback) errorCallback(error);
+                    }
+                );
+            };
+
+            // Update an object and replace it in object collection
+            function updateCurl(params, successCallback, errorCallback) {
+                params.transactionOperation = params.transactionOperation || 'SAVING';
+                params.operation = params.operation || 'update';
+
+                return  executeCurl(
+                    params,
+                    function(result) {
+                        if (params.itemCollection)
+                            pipCollections.replaceBy(params.itemCollection, 'id', result.id, result);
+
+                        if (successCallback) successCallback(result);
+                    },
+                    errorCallback
+                );
+            };
+
+            // Update an object and remove it from object collection
+            function deleteCurl(params, successCallback, errorCallback) {
+                params.transactionOperation = params.transactionOperation || 'SAVING';
+                params.operation = params.operation || 'remove';
+
+                return executeCurl(
+                    params,
+                    function(result) {
+                        if (params.itemCollection)
+                            _.remove(params.itemCollection, {id: result.id || (params.object || {}).id || (params.item || {}).id});
+
+                        if (successCallback) successCallback(result);
+                    },
+                    errorCallback
+                );
+            };
+
+            // Read a collection of objects
+            function readCurl(params, successCallback, errorCallback) {
+                params.transactionOperation = params.transactionOperation || 'READING';
+                params.operation = params.operation || 'query';
+
+                return executeCurl(
+                    params,
+                    function(result) {
+                        if (successCallback) successCallback(result);
+                    },
+                    errorCallback
+                );
+            };
+
+            // Read a single object and add it into collection
+            function readOneCurl(params, successCallback, errorCallback) {
+                params.transactionOperation = params.transactionOperation || 'READING';
+                params.operation = params.operation || 'page';
+
+                return executeCurl(
+                    params,
+                    function(result) {
+                        if (params.itemCollection && result) {
+                            var index = _.findIndex(params.itemCollection, {id: result.id});
+                            if (index >= 0) params.itemCollection[index] = result;
+                            else params.itemCollection.push(result);
+                        }
+
+                        if (successCallback) successCallback(result);
+                    },
+                    errorCallback
+                );
+            };
+
+            // Read a page and add results into object collection
+            function pageCurl(params, successCallback, errorCallback) {
+                params.transactionOperation = params.transactionOperation || 'READING';
+                params.operation = params.operation || 'page';
+
+                return executeCurl(
+                    params,
+                    function(result) {
+                        if (params.itemCollection && result.data) {
+                            for (var i = 0; i < result.data.length; i++)
+                                params.itemCollection.push(result.data[i]);
+                        }
+
+                        if (successCallback) successCallback(result);
+                    },
+                    errorCallback
+                );
+            };
+
+            // Save picture and document files
+            function saveFilesCurl(params, successCallback, errorCallback) {
+                var t = params.transaction, tid;
+
+                // Start transaction if necessary
+                if (t && !params.skipTransactionBegin) {
+                    tid = params.transactionId = t.begin(
+                        params.transactionOperation || 'SAVING'
+                    );
+                    if (!tid) return;
+                }
+
+//------------------
+
+                var uploadFiles = [{
+                    pictures: params.pictures,
+                    documents: params.documents
+                }];
+
+                // from content
+                if (params.item && params.item.content ) {
+                    var saveResult = true;
+                    async.eachSeries(_.union(params.item.content, uploadFiles),
+                        function (obj, callback) {
+                            // не выбран - пропускаем этот item  || нет этого события action
+                            if ( !obj.pictures && !obj.documents ) {
+                                callback();
+                            } else {
+                                if (obj.pictures) {
+                                    // Save pictures first
+                                    obj.pictures.save(
+                                        function () {
+                                            if (t && tid && t.aborted(tid)) {
+                                                saveResult =  false;
+                                                callback('aborted');
+                                            }
+                                            // Save documents second
+                                            if (obj.documents) {
+                                                obj.documents.save(
+                                                    function () {
+                                                        if (t && tid && t.aborted(tid)) {
+                                                            saveResult =  false;
+                                                            callback('aborted');
+                                                        }
+                                                        callback();
+                                                    },
+                                                    function (error) {
+                                                        saveResult =  false;
+                                                        callback(error);
+                                                    }
+                                                );
+                                            } else {
+                                                callback();
+                                            }
+                                        },
+                                        function (error) {
+                                            saveResult =  false;
+                                            callback(error);
+                                        }
+                                    );
+                                } else {
+                                    if (obj.documents) {
+                                        // Save documents first
+                                        obj.documents.save(
+                                            function () {
+                                                if (t && tid && t.aborted(tid)) {
+                                                    saveResult = false;
+                                                    callback('aborted');
+                                                }
+                                                callback();
+                                            },
+                                            function (error) {
+                                                saveResult = false;
+                                                callback(error);
+                                            }
+                                        );
+                                    }
+                                }
+                            }
+                        },
+                        function (error) {
+                            if (!error && saveResult) {
+                                // удаляем ненужные объекты перед сохранением
+                                // вызываем колбек
+                                if (t & !params.skipTransactionEnd) t.end();
+                                _.each(params.item.content, function(item){
+                                    delete item.pictures;
+                                    delete item.documents;
+                                });
+                                if (successCallback) successCallback();
+                            } else {
+                                // вызываем ошибочный колбек
+                                if (t) t.end(error);
+                                if (errorCallback) {
+                                    errorCallback(error);
+                                }
+                            }
+                        }
+                    );
+                } else {
+                    if (params.pictures) {
+                        // Save pictures first
+                        params.pictures.save(
+                            function () {
+                                if (t && tid && t.aborted(tid)) return;
+
+                                // Save documents second
+                                if (params.documents) {
+                                    params.documents.save(
+                                        function () {
+                                            if (t && tid && t.aborted(tid)) return;
+                                            // Do everything else
+                                            if (t & !params.skipTransactionEnd) t.end();
+                                            if (successCallback) successCallback();
+                                        },
+                                        function (error) {
+                                            if (t) t.end(error);
+                                            if (errorCallback) errorCallback(error);
+                                        }
+                                    );
+                                } else {
+                                    // Do everything else
+                                    if (t & !params.skipTransactionEnd) t.end();
+                                    if (successCallback) successCallback();
+                                }
+                            },
+                            function (error) {
+                                if (t) t.end(error);
+                                if (errorCallback) errorCallback(error);
+                            }
+                        );
+                    } else if (params.documents) {
+                        // Save documents first
+                        params.documents.save(
+                            function () {
+                                if (t && tid && t.aborted(tid)) return;
+                                // Do everything else
+                                if (t & !params.skipTransactionEnd) t.end();
+                                if (successCallback) successCallback();
+                            },
+                            function (error) {
+                                if (t) t.end(error);
+                                if (errorCallback) errorCallback(error);
+                            }
+                        );
+                    } else {
+                        // Do everything else
+                        if (t & !params.skipTransactionEnd) t.end();
+                        if (successCallback) successCallback();
+                    }
+                }
+            };
+
+            // Abort transaction with file upload
+            function abortFilesCurl(params) {
+                if (params.pictures) 
+                    params.pictures.abort();
+                if (params.documents)
+                    params.documents.abort();
+                    if (params.transaction)
+                    params.transaction.abort();  
+            };
+
+            return {
+                // extendApi: extendApi,
+
+                // Executing transactional requests to server
+                execute: executeCurl,
+
+                // Creating an object
+                create: createCurl,
+
+                // Updating an object
+                update: updateCurl,
+                save: updateCurl,
+
+                // Deleting an object
+                'delete': deleteCurl,
+                remove: deleteCurl,
+
+                // Reading objects
+                read: readCurl,
+                query: readCurl,
+
+                // Reading a single object
+                readOne: readOneCurl,
+                get: readOneCurl,
+
+                // Reading paginated results
+                page: pageCurl,
+                readPage: pageCurl,
+                queryPage: pageCurl,
+
+                // Saving files to file store
+                saveFiles: saveFilesCurl,
+                abortFiles: abortFilesCurl
+            }
+        }];
+    });
+
+})();
+
+/**
+ * @file Feedbacks data model
+ * @copyright Digital Living Software Corp. 2014-2016
+ */
+ 
+/* global angular */
+
+(function () {
+    'use strict';
+
+    var thisModule = angular.module('pipFeedbacksData', ['pipRest', 'pipDataModel']);
+
+    thisModule.provider('pipFeedbacksData', function() {
+
+        this.readFeedbacksResolver = function () {
+            return /* @ngInject */ ['$stateParams', 'pipRest', function ($stateParams, pipRest) {
+                return pipRest.feedbacks().query().$promise;
+            }];
+        };
+
+        this.readFeedbackResolver = function () {
+            return /* @ngInject */ ['$stateParams', 'pipRest', function ($stateParams, pipRest) {
+                return pipRest.feedbacks().get({
+                    id: $stateParams.id
+                }).$promise;
+            }];
+        };
+
+        this.$get = ['$stateParams', 'pipRest', 'pipDataModel', function($stateParams, pipRest, pipDataModel) {
+            return {
+
+                sendFeedback: function(params, successCallback, errorCallback) {
+                    params.resource = 'feedbacks';
+                    pipDataModel.create(params, successCallback, errorCallback);
+                },
+
+                createFeedbackWithFiles: function(params, successCallback, errorCallback) {
+                    params.skipTransactionEnd = true;
+                    pipDataModel.saveFiles(params, function() {
+                        params.resource = 'feedbacks';
+                        params.skipTransactionBegin = true;
+                        params.skipTransactionEnd = false;
+                        pipDataModel.create(params, successCallback, errorCallback);
+                    });
+                },
+
+                updateFeedback: function (params, successCallback, errorCallback) {
+                    params.resource = 'feedbacks';
+                    params.skipTransactionBegin = true;
+                    params.skipTransactionEnd = false;
+                    pipDataModel.update(
+                        params,
+                        successCallback,
+                        errorCallback
+                    );
+                },
+
+                deleteFeedback: function(params, successCallback, errorCallback) {
+                    params.resource = 'feedbacks';
+                    pipDataModel.remove(params, successCallback, errorCallback);
+                }
+            };
+        }];
+    });
+
+})();
+
+/**
+ * @file Guides data model
+ * @copyright Digital Living Software Corp. 2014-2016
+ */
+ 
+ /* global angular */
+ 
+(function () {
+    'use strict';
+
+    var thisModule = angular.module('pipGuidesData', ['pipRest', 'pipDataModel']);
+
+    thisModule.provider('pipGuidesData', function () {
+        var PAGE_SIZE = 5;
+
+        // Read all guides
+        this.readGuidesResolver = function () {
+            return /* @ngInject */ ['$stateParams', 'pipRest', function ($stateParams, pipRest) {
+                return pipRest.guides().query().$promise;
+            }];
+        };
+        
+        this.readIntroGuidesResolver = function () {
+            return /* @ngInject */ ['$stateParams', 'pipRest', function ($stateParams, pipRest) {
+                return pipRest.guides().query({
+                        type: 'intro',
+                        status : 'completed'
+                }).$promise;
+            }];
+        };
+
+        this.readGuideResolver = function () {
+            return /* @ngInject */ ['$stateParams', 'pipRest', function ($stateParams, pipRest) {
+                return pipRest.guides().get({
+                    id: $stateParams.id || '55bf23d3bb22aa175c3e498e'
+                }).$promise;
+            }];
+        };
+
+        // CRUD operations and other business methods
+        this.$get = ['pipRest', '$stateParams', 'pipDataModel', function (pipRest, $stateParams, pipDataModel) {
+            return {
+                partyId: pipRest.partyId,
+
+                updateGuide: function (params, successCallback, errorCallback) {
+                    params.resource = 'guides';
+                    params.skipTransactionBegin = true;
+                    params.skipTransactionEnd = false;
+                    pipDataModel.update(
+                        params,
+                        successCallback,
+                        errorCallback
+                    );
+                },
+
+                readGuides: function(params, successCallback, errorCallback) {
+                    params.resource = 'guides';
+                    params.party_id = pipRest.partyId($stateParams);
+                    params.type = 'intro';
+                    pipDataModel.read(params, successCallback, errorCallback);
+                },
+
+                createGuideWithFiles: function(params, successCallback, errorCallback) {
+                    params.skipTransactionEnd = true;
+                    pipDataModel.saveFiles(params, function() {
+                        params.resource = 'guides';
+                        params.skipTransactionBegin = true;
+                        params.skipTransactionEnd = false;
+                        pipDataModel.create(
+                            params,
+                            successCallback,
+                            errorCallback
+                        );
+                    });
+                },
+                
+                updateGuideWithFiles: function(params, successCallback, errorCallback) {
+                    params.skipTransactionEnd = true;
+                    pipDataModel.saveFiles(params, function() {
+                        params.resource = 'guides';
+                        params.skipTransactionBegin = true;
+                        params.skipTransactionEnd = false;
+                        pipDataModel.update(
+                            params,
+                            successCallback,
+                            errorCallback
+                        );
+                    });
+                },
+
+                createGuide: function (params, successCallback, errorCallback) {
+                    params.resource = 'guides';
+                    params.skipTransactionBegin = true;
+                    params.skipTransactionEnd = false;
+                    pipDataModel.create(
+                        params,
+                        successCallback,
+                        errorCallback
+                    );
+                },
+                
+                deleteGuide: function(params, successCallback, errorCallback) {
+                    params.resource = 'guides';
+                    pipDataModel.remove(params, successCallback, errorCallback);
+                }
+
+            }
+        }];
+    });
+
+})();
+/**
+ * @file Image sets data model
+ * @copyright Digital Living Software Corp. 2014-2016
+ */
+ 
+ /* global angular */
+ 
+(function () {
+    'use strict';
+    
+    var thisModule = angular.module('pipImageSetsData', ['pipRest', 'pipDataModel']);
+
+    thisModule.provider('pipImageSetsData', function () {
+        var PAGE_SIZE = 15;
+
+        // Read all image sets
+        this.readImageSetsResolver = function () {
+            return /* @ngInject */ ['$stateParams', 'pipRest', function ($stateParams, pipRest) {
+                return pipRest.image_sets().get({
+                    paging: 1,
+                    skip: 0,
+                    take: PAGE_SIZE,
+                    search: $stateParams.search,
+                    //tags: $stateParams.search
+                }).$promise;
+            }];
+        };
+
+        this.readImageSetResolver = function () {
+            return /* @ngInject */ ['$stateParams', 'pipRest', function ($stateParams, pipRest) {
+                return pipRest.image_sets().get({
+                    id: $stateParams.id
+                }).$promise;
+            }];
+        };
+
+        // CRUD operations and other business methods
+        this.$get = ['pipRest', '$stateParams', 'pipDataModel', function (pipRest, $stateParams, pipDataModel) {
+
+            return {
+                partyId: pipRest.partyId,
+
+                readImageSets: function (params, transaction, successCallback, errorCallback) {
+                    params.resource = 'image_sets';
+
+                    params.skipTransactionBegin = true;
+                    params.skipTransactionEnd = false;
+                    params.item.search = $stateParams.search || params.item.search;
+                   // params.item.tags = $stateParams.search || params.item.search;
+
+                    params.item.party_id = pipRest.partyId($stateParams);
+                    params.item.take = PAGE_SIZE;
+                    params.item.paging = 1;
+
+                    pipDataModel.page(
+                        params,
+                        successCallback,
+                        errorCallback
+                    );
+                },
+
+                updateImageSet: function (params, successCallback, errorCallback) {
+                    params.resource = 'image_sets';
+                    params.skipTransactionBegin = true;
+                    params.skipTransactionEnd = false;
+                    pipDataModel.update(
+                        params,
+                        successCallback,
+                        errorCallback
+                    );
+                },
+
+                createImageSet: function (params, successCallback, errorCallback) {
+                    params.resource = 'image_sets';
+                    params.skipTransactionBegin = true;
+                    params.skipTransactionEnd = false;
+                    pipDataModel.create(
+                        params,
+                        successCallback,
+                        errorCallback
+                    );
+                },
+
+                createImageSetWithFiles: function(params, successCallback, errorCallback) {
+                    params.skipTransactionEnd = true;
+                    pipDataModel.saveFiles(params, function() {
+                        params.resource = 'image_sets';
+                        params.skipTransactionBegin = true;
+                        params.skipTransactionEnd = false;
+                        pipDataModel.create(
+                            params,
+                            successCallback,
+                            errorCallback
+                        );
+                    });
+                },
+
+                updateImageSetWithFiles: function(params, successCallback, errorCallback) {
+                    params.skipTransactionEnd = true;
+                    pipDataModel.saveFiles(params, function() {
+                        params.resource = 'image_sets';
+                        params.skipTransactionBegin = true;
+                        params.skipTransactionEnd = false;
+                        pipDataModel.update(
+                            params,
+                            successCallback,
+                            errorCallback
+                        );
+                    });
+                },
+
+                deleteImageSet: function(params, successCallback, errorCallback) {
+                    params.resource = 'image_sets';
+                    pipDataModel.remove(params, successCallback, errorCallback);
+                }
+            }
+        }];
+    });
+
+})();
+
+/**
+ * @file Session data model
+ * @copyright Digital Living Software Corp. 2014-2016
+ */
+
+/* global _, angular */
+
+(function () {
+    'use strict';
+
+    var thisModule = angular.module('pipSessionData', ['pipRest', 'pipSessionCache']);
+
+    thisModule.provider('pipSessionData', function() {
+
+        readUserResolver.$inject = ['pipSessionCache'];
+        readPartyResolver.$inject = ['pipSessionCache', '$stateParams'];
+        readConnectionResolver.$inject = ['pipSessionCache', '$stateParams'];
+        readSettingsResolver.$inject = ['pipSessionCache'];
+        readSessionsUserResolver.$inject = ['$stateParams', 'pipRest', '$rootScope'];
+        readSessionIdResolver.$inject = ['$stateParams', 'pipSession'];
+        this.readUserResolver = /* @ngInject */ readUserResolver;
+        this.readPartyResolver = /* @ngInject */ readPartyResolver;
+        this.readConnectionResolver = /* @ngInject */ readConnectionResolver;
+        this.readSettingsResolver = /* @ngInject */ readSettingsResolver;
+
+        this.readSessionsUserResolver = /* @ngInject */ readSessionsUserResolver;
+        this.readSessionIdResolver = /* @ngInject */ readSessionIdResolver;
+
+        this.$get = ['$rootScope', '$stateParams', 'pipRest', function($rootScope, $stateParams, pipRest) {
+            return {
+                getSessionId: getSessionId,
+                removeSession: removeSession
+            };
+
+            function getSessionId(pipSession){
+                return function () {
+                    return pipSession.sessionId();
+                };
+            };
+
+            function removeSession(transaction, session, successCallback, errorCallback) {
+                var tid = transaction.begin('REMOVING');
+                if (!tid) return;
+
+                pipRest.userSessions().remove(
+                    {
+                        id: session.id,
+                        party_id: $stateParams.id
+                    },
+                    function (removedSession) {
+                        if (transaction.aborted(tid)) return;
+                        else transaction.end();
+
+                        if (successCallback) successCallback(removedSession);
+                    },
+                    function (error) {
+                        transaction.end(error);
+                        if (errorCallback) errorCallback(error);
+                    }
+                );
+            };
+            
+        }];
+        //--------------
+
+        function readUserResolver(pipSessionCache) {
+            return pipSessionCache.readUser();                             
+        };
+
+        function readPartyResolver(pipSessionCache, $stateParams) {
+            return pipSessionCache.readParty($stateParams);
+        };
+
+        function readConnectionResolver(pipSessionCache, $stateParams) {
+            return pipSessionCache.readConnection($stateParams);
+        };
+
+        function readSettingsResolver(pipSessionCache) {
+            return pipSessionCache.readSettings();                             
+        };
+
+        function readSessionsUserResolver($stateParams, pipRest, $rootScope) {
+            return pipRest.userSessions().query({
+                party_id: $stateParams.id
+            }).$promise;
+        };
+
+        function readSessionIdResolver($stateParams, pipSession) {
+            return pipSession.sessionId();
+        };
+        
+    });
+
+})();
+
+/**
+ * @file Settings data model
+ * @copyright Digital Living Software Corp. 2014-2016
+ * @todo Rewrite, use cached settings, remove unrelated methods
+ */
+
+/* global _, angular */
+
+(function () {
+    'use strict';
+
+    var thisModule = angular.module('pipSettingsData', ['pipRest', 'pipSessionData', 'pipSessionCache', 'pipDataModel']);
+
+    thisModule.provider('pipSettingsData', ['pipSessionDataProvider', function(pipSessionDataProvider) {
+
+        this.readSettingsResolver = pipSessionDataProvider.readSettingsResolver;
+
+        this.$get = ['$rootScope', '$stateParams', 'pipRest', 'pipSessionCache', 'pipSession', 'pipDataModel', function($rootScope, $stateParams, pipRest, pipSessionCache, pipSession, pipDataModel) {
+            return {
+                // Saving generic settings
+                saveSettings: saveSettings,
+
+                readSettings: readSettings,
+
+                reReadSettings: reReadSettings
+
+            };
+
+            function readSettings(successCallback, errorCallback) {
+                pipSessionCache.readSettings(successCallback, errorCallback)
+            };
+
+            // force read settings from server and update cache
+            function reReadSettings(successCallback, errorCallback) {
+                pipRest.partySettings().get(
+                    {
+                        party_id: pipSession.userId()
+                    },
+                    function (settings) {
+                        settings = settings || {};
+                        pipSessionCache.onSettingsUpdate(settings);
+                        if (successCallback) successCallback(settings);
+                    },
+                    errorCallback
+                );
+            };
+
+            function saveSettings(settings, keys, successCallback, errorCallback) {
+                // Extract specific keys
+                settings = keys ? _.pick(settings, keys) : settings;
+                settings.party_id = pipSession.userId();
+                var oldSettings = _.cloneDeep($rootScope.$settings);
+                pipSessionCache.onSettingsUpdate(settings);
+
+                var params = {};
+                params.resource = 'partySettings';
+                params.item = settings;
+                params.item.creator_id = pipSession.userId();
+
+                pipDataModel.create(
+                    params,
+                    successCallback,
+                    function(error) {
+                        pipSessionCache.onSettingsUpdate(oldSettings);
+
+                        if (errorCallback) errorCallback(error);
+                    }
+                );
+            };
+        }];
+    }]);
+
+})();
+
+/**
+ * @file Tags data model
+ * @copyright Digital Living Software Corp. 2014-2016
+ */
+
+/* global angular */
+
+(function () {
+    'use strict';
+
+    var thisModule = angular.module('pipTagsData', ['pipRest' , 'pipDataModel', 'pipTagsCache']);
+
+    thisModule.provider('pipTagsData', function() {
+        
+        this.readTagsResolver = function() {
+            return /* @ngInject */ ['$stateParams', 'pipRest', 'pipTagsCache', function($stateParams, pipRest, pipTagsCache) {
+                return pipTagsCache.readTags({
+                    item: { party_id: pipRest.partyId($stateParams) }
+                });
+            }];
+        };
+
+        this.$get = ['$stateParams', '$state', 'pipRest', 'pipDataModel', 'pipTagsCache', function($stateParams, $state, pipRest, pipDataModel, pipTagsCache) {
+            return {
+                partyId: pipRest.partyId,
+                
+                readTags: function(params, successCallback, errorCallback) {
+                    pipTagsCache.readTags(params, successCallback, errorCallback);
+                }
+            }
+        }];
+    });
+
+})();
+
+/**
+ * @file Tips data model
+ * @copyright Digital Living Software Corp. 2014-2016
+ */
+
+/* global angular */
+
+(function () {
+    'use strict';
+
+    var thisModule = angular.module('pipTipsData', ['pipRest', 'pipDataModel']);
+
+    thisModule.provider('pipTipsData', function () {
+        var PAGE_SIZE = 100;
+
+        // Read all tips
+        this.readTipsResolver = function () {
+            return /* @ngInject */ ['$stateParams', 'pipRest', function ($stateParams, pipRest) {
+                return pipRest.tips().query().$promise;
+            }];
+        };
+
+        this.readTipResolver = function () {
+            return /* @ngInject */ ['$stateParams', 'pipRest', function ($stateParams, pipRest) {
+                return pipRest.tips().get({
+                    id: $stateParams.id
+                }).$promise;
+            }];
+        };
+
+        // CRUD operations and other business methods
+        this.$get = ['pipRest', '$stateParams', 'pipDataModel', function (pipRest, $stateParams, pipDataModel) {
+
+            return {
+                partyId: pipRest.partyId,
+
+                readTips: function (params, transaction, successCallback, errorCallback) {
+                    params.resource = 'tips';
+
+                    params.skipTransactionBegin = true;
+                    params.skipTransactionEnd = false;
+                    params.item.search = $stateParams.search;
+                    params.item.tags = $stateParams.search;
+
+                    params.item.party_id = pipRest.partyId($stateParams);
+                    params.item.take = PAGE_SIZE;
+                    params.item.paging = 1;
+
+                    pipDataModel.page(
+                        params,
+                        successCallback,
+                        errorCallback
+                    );
+                },
+
+                updateTip: function (params, successCallback, errorCallback) {
+                    params.resource = 'tips';
+                    params.skipTransactionBegin = true;
+                    params.skipTransactionEnd = false;
+                    pipDataModel.update(
+                        params,
+                        successCallback,
+                        errorCallback
+                    );
+                },
+
+                createTip: function (params, successCallback, errorCallback) {
+                    params.resource = 'tips';
+                    params.skipTransactionBegin = true;
+                    params.skipTransactionEnd = false;
+                    pipDataModel.create(
+                        params,
+                        successCallback,
+                        errorCallback
+                    );
+                },
+
+                createTipWithFiles: function(params, successCallback, errorCallback) {
+                    params.skipTransactionEnd = true;
+                    pipDataModel.saveFiles(params, function() {
+                        params.resource = 'tips';
+                        params.skipTransactionBegin = true;
+                        params.skipTransactionEnd = false;
+                        pipDataModel.create(
+                            params,
+                            successCallback,
+                            errorCallback
+                        );
+                    });
+                },
+
+                updateTipWithFiles: function(params, successCallback, errorCallback) {
+                    params.skipTransactionEnd = true;
+                    pipDataModel.saveFiles(params, function() {
+                        params.resource = 'tips';
+                        params.skipTransactionBegin = true;
+                        params.skipTransactionEnd = false;
+                        pipDataModel.update(
+                            params,
+                            successCallback,
+                            errorCallback
+                        );
+                    });
+                },
+
+                deleteTip: function(params, successCallback, errorCallback) {
+                    params.resource = 'tips';
+                    pipDataModel.remove(params, successCallback, errorCallback);
+                }
+            }
+        }];
+    });
+
+})();
+
+/**
+ * @file Users data model
+ * @copyright Digital Living Software Corp. 2014-2016
+ */
+
+/* global angular */
+
+(function () {
+    'use strict';
+
+    var thisModule = angular.module('pipUsersData', ['pipRest']);
+
+    thisModule.provider('pipUsersData', function () {
+
+        this.readUsersResolver = function () {
+            return /* @ngInject */ ['$stateParams', 'pipRest', function ($stateParams, pipRest) {
+                return pipRest.users().page({
+                    party_id: $stateParams.id,
+                    paging: $stateParams.paging || 1,
+                    skip: $stateParams.skip || 0,
+                    take: $stateParams.take || 15
+                }).$promise;
+            }];
+        };
+
+        this.readUserResolver = function () {
+            return /* @ngInject */ ['$stateParams', 'pipRest', function ($stateParams, pipRest) {
+                return pipRest.users().get({
+                    id: $stateParams.id,
+                    party_id: pipRest.partyId($stateParams)
+                }).$promise;
+
+            }];
+        };
+
+        this.readActivitiesUserResolver = /* @ngInject */
+            ['$stateParams', 'pipRest', '$rootScope', function ($stateParams, pipRest, $rootScope) {
+                return pipRest.partyActivities().page({
+                    party_id: $rootScope.$user.id,
+                    paging: 1,
+                    skip: 0,
+                    take: 25
+                }).$promise;
+            }];
+
+        // CRUD operations and other business methods
+        this.$get = ['pipRest', '$stateParams', function (pipRest, $stateParams) {   
+            return {
+                partyId: pipRest.partyId,
+
+                readUsers: function (params, transaction, successCallback, errorCallback) {
+                    pipRest.users().page(
+                        {
+                            party_id: pipRest.partyId($stateParams),
+                            paging: 1,
+                            skip: params.start,
+                            search: params.item.search ,
+                            active: params.item.active,
+                            paid: params.item.paid,
+                            admin: params.item.admin,
+                            take: 15
+                        },
+                        function (pagedUsers) {
+                            if (successCallback) successCallback(pagedUsers);
+                        },
+                        function (error) {
+                            errorCallback(error);
+                        }
+                    );
+                },
+                
+                updateUser: function (item, transaction, successCallback, errorCallback) {
+                    pipRest.users().update(
+                        item.item,
+                        function (updatedItem) {
+                            if (successCallback) successCallback(updatedItem);
+                        },
+                        function (error) {
+                            errorCallback(error);
+                        }
+                    );
+                }
+
+            }
+        }];
+    });
+
+})();
+/**
  * @file User access permissions service
  * @copyright Digital Living Software Corp. 2014-2016
  */
@@ -1573,6 +2769,16 @@
     thisModule.provider('pipRest', ['$httpProvider', function($httpProvider) {
         var serverUrl = '';
         var serverUrlFixed = false;
+        
+        var api = [];
+        
+        this.addApi = addApi;
+        
+        function addApi(extension) {
+            for (var call in extension) {
+                api[call] = extension[call];
+            }
+        };
 
         // Set default API version
         $httpProvider.defaults.headers.common['api-version'] = '1.0';
@@ -1642,7 +2848,7 @@
                 );
             };
 
-            return {
+           var restApi = {
                 version: function (newVersion) {
                     if (newVersion)
                         $httpProvider.defaults.headers.common['api-version'] = newVersion;
@@ -2101,6 +3307,17 @@
                 createPartyCollection: createPartyCollection
 
             };
+            
+            function addApi() {
+                for (var call in api) {
+                    restApi[call] = api[call];
+                }
+            };
+            
+            addApi();
+        
+        
+            return restApi;
         }];
     }]);
 
@@ -2397,1201 +3614,6 @@
             };
         }]
     );
-
-})();
-/**
- * @file Announces data model
- * @copyright Digital Living Software Corp. 2014-2016
- */
- 
- /* global angular */
- 
-(function () {
-    'use strict';
-
-    var thisModule = angular.module('pipAnnouncesData', ['pipRest', 'pipDataModel']);
-
-    thisModule.provider('pipAnnouncesData', function () {
-
-        // Read all announces
-        this.readAnnouncesResolver = function () {
-            return /* @ngInject */ ['$stateParams', 'pipRest', 'pipEnums', function ($stateParams, pipRest, pipEnums) {
-                return pipRest.announces().query().$promise;
-            }];
-        };
-
-        this.readCompletedAnnouncesResolver = function () {
-            return /* @ngInject */ ['$stateParams', 'pipRest', 'pipEnums', function ($stateParams, pipRest, pipEnums) {
-                return pipRest.announces().query( {
-                        status: pipEnums.EXECUTION_STATUS.COMPLETED
-                    }
-                ).$promise;
-            }];
-        };
-
-        this.readAnnounceResolver = function () {
-            return /* @ngInject */ ['$stateParams', 'pipRest', function ($stateParams, pipRest) {
-                return pipRest.announces().get({
-                    id: $stateParams.id
-                }).$promise;
-            }];
-        };
-
-        // CRUD operations and other business methods
-        this.$get = ['pipRest', '$stateParams', 'pipDataModel', function (pipRest, $stateParams, pipDataModel) {
-            return {
-                partyId: pipRest.partyId,
-
-                updateAnnounce: function (params, successCallback, errorCallback) {
-                    params.resource = 'announces';
-                    params.skipTransactionBegin = true;
-                    params.skipTransactionEnd = false;
-                    pipDataModel.update(
-                        params,
-                        successCallback,
-                        errorCallback
-                    );
-                },
-                
-                updateAnnounceWithFiles: function(params, successCallback, errorCallback) {
-                    params.skipTransactionEnd = true;
-                    pipDataModel.saveFiles(params, function() {
-                        params.resource = 'announces';
-                        params.skipTransactionBegin = true;
-                        params.skipTransactionEnd = false;
-                        pipDataModel.update(
-                            params,
-                            successCallback,
-                            errorCallback
-                        );
-                    });
-                },
-
-                createAnnounceWithFiles: function(params, successCallback, errorCallback) {
-                    params.skipTransactionEnd = true;
-                    pipDataModel.saveFiles(params, function() {
-                        params.resource = 'announces';
-                        params.skipTransactionBegin = true;
-                        params.skipTransactionEnd = false;
-                        pipDataModel.create(
-                            params,
-                            successCallback,
-                            errorCallback
-                        );
-                    });
-                },
-                
-                createAnnounce: function (params, successCallback, errorCallback) {
-                    params.resource = 'announces';
-                    params.skipTransactionBegin = true;
-                    params.skipTransactionEnd = false;
-                    pipDataModel.create(
-                        params,
-                        successCallback,
-                        errorCallback
-                    );
-                },
-
-                deleteAnnounce: function(params, successCallback, errorCallback) {
-                    params.resource = 'announces';
-                    pipDataModel.remove(params, successCallback, errorCallback);
-                }
-            }
-        }];
-    });
-
-})();
-/**
- * @file Registration of all data modules
- * @copyright Digital Living Software Corp. 2014-2016
- */
-
-/* global angular */
-
-(function () {
-    'use strict';
-
-    angular.module('pipData', [
-		'pipDataModel',
-		'pipDataCache',
-        
-        'pipUsersData',
-        'pipSettingsData',
-        'pipSessionData',
-        'pipTagsData',
-
-        'pipAnnouncesData',
-        'pipFeedbacksData',
-        'pipGuidesData',
-        'pipImageSetsData',
-        'pipTipsData'
-    ]);
-    
-})();
-/**
- * @file Application abstract data model
- * @copyright Digital Living Software Corp. 2014-2016
- */
-
-/* global angular, _, async */
-
-(function () {
-    'use strict';
-
-    var thisModule = angular.module('pipDataModel', ['pipUtils', 'pipRest']);
-
-    thisModule.provider('pipDataModel', function() {
-        this.$get = ['$stateParams', 'pipCollections', 'pipRest', function($stateParams, pipCollections, pipRest) {
-
-            var api = [];
-
-            for (var call in pipRest) {
-                api[call] = pipRest[call];
-            }
-
-            function extendApi(extension) {
-                for (var call in extension) {
-                    api[call] = extension[call];
-                }
-            }
-
-            // Execute request to REST API
-            function executeCurl(params, successCallback, errorCallback) {
-                var t = params.transaction, tid;
-
-                if (t && !params.skipTransactionBegin) {
-                    tid = params.transactionId = t.begin(
-                        params.transactionOperation || 'PROCESSING'
-                    );
-                    if (!tid) return;
-                }
-
-                return api[params.resource]()[params.operation](
-                    params.item,
-                    function (result) {
-                        if (t && tid && t.aborted(tid)) return;
-                        if (t && !params.skipTransactionEnd) t.end();
-                        if (successCallback) successCallback(result);
-                    },
-                    function (error) {
-                        if (t) t.end(error);
-                        if (errorCallback) errorCallback(error);
-                    }
-                );
-            };
-
-            // Create an object and add it to object collection
-            function createCurl(params, successCallback, errorCallback) {
-                params.transactionOperation = params.transactionOperation || 'SAVING';
-                params.operation = params.operation || 'save';
-                
-                return executeCurl(
-                    params,
-                    function(result) {
-                        if (params.itemCollection)
-                            params.itemCollection.push(result);
-
-                        if (successCallback) successCallback(result);
-                    },
-                    function(error){
-                        if (errorCallback) errorCallback(error);
-                    }
-                );
-            };
-
-            // Update an object and replace it in object collection
-            function updateCurl(params, successCallback, errorCallback) {
-                params.transactionOperation = params.transactionOperation || 'SAVING';
-                params.operation = params.operation || 'update';
-
-                return  executeCurl(
-                    params,
-                    function(result) {
-                        if (params.itemCollection)
-                            pipCollections.replaceBy(params.itemCollection, 'id', result.id, result);
-
-                        if (successCallback) successCallback(result);
-                    },
-                    errorCallback
-                );
-            };
-
-            // Update an object and remove it from object collection
-            function deleteCurl(params, successCallback, errorCallback) {
-                params.transactionOperation = params.transactionOperation || 'SAVING';
-                params.operation = params.operation || 'remove';
-
-                return executeCurl(
-                    params,
-                    function(result) {
-                        if (params.itemCollection)
-                            _.remove(params.itemCollection, {id: result.id || (params.object || {}).id || (params.item || {}).id});
-
-                        if (successCallback) successCallback(result);
-                    },
-                    errorCallback
-                );
-            };
-
-            // Read a collection of objects
-            function readCurl(params, successCallback, errorCallback) {
-                params.transactionOperation = params.transactionOperation || 'READING';
-                params.operation = params.operation || 'query';
-
-                return executeCurl(
-                    params,
-                    function(result) {
-                        if (successCallback) successCallback(result);
-                    },
-                    errorCallback
-                );
-            };
-
-            // Read a single object and add it into collection
-            function readOneCurl(params, successCallback, errorCallback) {
-                params.transactionOperation = params.transactionOperation || 'READING';
-                params.operation = params.operation || 'page';
-
-                return executeCurl(
-                    params,
-                    function(result) {
-                        if (params.itemCollection && result) {
-                            var index = _.findIndex(params.itemCollection, {id: result.id});
-                            if (index >= 0) params.itemCollection[index] = result;
-                            else params.itemCollection.push(result);
-                        }
-
-                        if (successCallback) successCallback(result);
-                    },
-                    errorCallback
-                );
-            };
-
-            // Read a page and add results into object collection
-            function pageCurl(params, successCallback, errorCallback) {
-                params.transactionOperation = params.transactionOperation || 'READING';
-                params.operation = params.operation || 'page';
-
-                return executeCurl(
-                    params,
-                    function(result) {
-                        if (params.itemCollection && result.data) {
-                            for (var i = 0; i < result.data.length; i++)
-                                params.itemCollection.push(result.data[i]);
-                        }
-
-                        if (successCallback) successCallback(result);
-                    },
-                    errorCallback
-                );
-            };
-
-            // Save picture and document files
-            function saveFilesCurl(params, successCallback, errorCallback) {
-                var t = params.transaction, tid;
-
-                // Start transaction if necessary
-                if (t && !params.skipTransactionBegin) {
-                    tid = params.transactionId = t.begin(
-                        params.transactionOperation || 'SAVING'
-                    );
-                    if (!tid) return;
-                }
-
-//------------------
-
-                var uploadFiles = [{
-                    pictures: params.pictures,
-                    documents: params.documents
-                }];
-
-                // from content
-                if (params.item && params.item.content ) {
-                    var saveResult = true;
-                    async.eachSeries(_.union(params.item.content, uploadFiles),
-                        function (obj, callback) {
-                            // не выбран - пропускаем этот item  || нет этого события action
-                            if ( !obj.pictures && !obj.documents ) {
-                                callback();
-                            } else {
-                                if (obj.pictures) {
-                                    // Save pictures first
-                                    obj.pictures.save(
-                                        function () {
-                                            if (t && tid && t.aborted(tid)) {
-                                                saveResult =  false;
-                                                callback('aborted');
-                                            }
-                                            // Save documents second
-                                            if (obj.documents) {
-                                                obj.documents.save(
-                                                    function () {
-                                                        if (t && tid && t.aborted(tid)) {
-                                                            saveResult =  false;
-                                                            callback('aborted');
-                                                        }
-                                                        callback();
-                                                    },
-                                                    function (error) {
-                                                        saveResult =  false;
-                                                        callback(error);
-                                                    }
-                                                );
-                                            } else {
-                                                callback();
-                                            }
-                                        },
-                                        function (error) {
-                                            saveResult =  false;
-                                            callback(error);
-                                        }
-                                    );
-                                } else {
-                                    if (obj.documents) {
-                                        // Save documents first
-                                        obj.documents.save(
-                                            function () {
-                                                if (t && tid && t.aborted(tid)) {
-                                                    saveResult = false;
-                                                    callback('aborted');
-                                                }
-                                                callback();
-                                            },
-                                            function (error) {
-                                                saveResult = false;
-                                                callback(error);
-                                            }
-                                        );
-                                    }
-                                }
-                            }
-                        },
-                        function (error) {
-                            if (!error && saveResult) {
-                                // удаляем ненужные объекты перед сохранением
-                                // вызываем колбек
-                                if (t & !params.skipTransactionEnd) t.end();
-                                _.each(params.item.content, function(item){
-                                    delete item.pictures;
-                                    delete item.documents;
-                                });
-                                if (successCallback) successCallback();
-                            } else {
-                                // вызываем ошибочный колбек
-                                if (t) t.end(error);
-                                if (errorCallback) {
-                                    errorCallback(error);
-                                }
-                            }
-                        }
-                    );
-                } else {
-                    if (params.pictures) {
-                        // Save pictures first
-                        params.pictures.save(
-                            function () {
-                                if (t && tid && t.aborted(tid)) return;
-
-                                // Save documents second
-                                if (params.documents) {
-                                    params.documents.save(
-                                        function () {
-                                            if (t && tid && t.aborted(tid)) return;
-                                            // Do everything else
-                                            if (t & !params.skipTransactionEnd) t.end();
-                                            if (successCallback) successCallback();
-                                        },
-                                        function (error) {
-                                            if (t) t.end(error);
-                                            if (errorCallback) errorCallback(error);
-                                        }
-                                    );
-                                } else {
-                                    // Do everything else
-                                    if (t & !params.skipTransactionEnd) t.end();
-                                    if (successCallback) successCallback();
-                                }
-                            },
-                            function (error) {
-                                if (t) t.end(error);
-                                if (errorCallback) errorCallback(error);
-                            }
-                        );
-                    } else if (params.documents) {
-                        // Save documents first
-                        params.documents.save(
-                            function () {
-                                if (t && tid && t.aborted(tid)) return;
-                                // Do everything else
-                                if (t & !params.skipTransactionEnd) t.end();
-                                if (successCallback) successCallback();
-                            },
-                            function (error) {
-                                if (t) t.end(error);
-                                if (errorCallback) errorCallback(error);
-                            }
-                        );
-                    } else {
-                        // Do everything else
-                        if (t & !params.skipTransactionEnd) t.end();
-                        if (successCallback) successCallback();
-                    }
-                }
-            };
-
-            // Abort transaction with file upload
-            function abortFilesCurl(params) {
-                if (params.pictures) 
-                    params.pictures.abort();
-                if (params.documents)
-                    params.documents.abort();
-                    if (params.transaction)
-                    params.transaction.abort();  
-            };
-
-            return {
-                extendApi: extendApi,
-
-                // Executing transactional requests to server
-                execute: executeCurl,
-
-                // Creating an object
-                create: createCurl,
-
-                // Updating an object
-                update: updateCurl,
-                save: updateCurl,
-
-                // Deleting an object
-                'delete': deleteCurl,
-                remove: deleteCurl,
-
-                // Reading objects
-                read: readCurl,
-                query: readCurl,
-
-                // Reading a single object
-                readOne: readOneCurl,
-                get: readOneCurl,
-
-                // Reading paginated results
-                page: pageCurl,
-                readPage: pageCurl,
-                queryPage: pageCurl,
-
-                // Saving files to file store
-                saveFiles: saveFilesCurl,
-                abortFiles: abortFilesCurl
-            }
-        }];
-    });
-
-})();
-
-/**
- * @file Feedbacks data model
- * @copyright Digital Living Software Corp. 2014-2016
- */
- 
-/* global angular */
-
-(function () {
-    'use strict';
-
-    var thisModule = angular.module('pipFeedbacksData', ['pipRest', 'pipDataModel']);
-
-    thisModule.provider('pipFeedbacksData', function() {
-
-        this.readFeedbacksResolver = function () {
-            return /* @ngInject */ ['$stateParams', 'pipRest', function ($stateParams, pipRest) {
-                return pipRest.feedbacks().query().$promise;
-            }];
-        };
-
-        this.readFeedbackResolver = function () {
-            return /* @ngInject */ ['$stateParams', 'pipRest', function ($stateParams, pipRest) {
-                return pipRest.feedbacks().get({
-                    id: $stateParams.id
-                }).$promise;
-            }];
-        };
-
-        this.$get = ['$stateParams', 'pipRest', 'pipDataModel', function($stateParams, pipRest, pipDataModel) {
-            return {
-
-                sendFeedback: function(params, successCallback, errorCallback) {
-                    params.resource = 'feedbacks';
-                    pipDataModel.create(params, successCallback, errorCallback);
-                },
-
-                createFeedbackWithFiles: function(params, successCallback, errorCallback) {
-                    params.skipTransactionEnd = true;
-                    pipDataModel.saveFiles(params, function() {
-                        params.resource = 'feedbacks';
-                        params.skipTransactionBegin = true;
-                        params.skipTransactionEnd = false;
-                        pipDataModel.create(params, successCallback, errorCallback);
-                    });
-                },
-
-                updateFeedback: function (params, successCallback, errorCallback) {
-                    params.resource = 'feedbacks';
-                    params.skipTransactionBegin = true;
-                    params.skipTransactionEnd = false;
-                    pipDataModel.update(
-                        params,
-                        successCallback,
-                        errorCallback
-                    );
-                },
-
-                deleteFeedback: function(params, successCallback, errorCallback) {
-                    params.resource = 'feedbacks';
-                    pipDataModel.remove(params, successCallback, errorCallback);
-                }
-            };
-        }];
-    });
-
-})();
-
-/**
- * @file Guides data model
- * @copyright Digital Living Software Corp. 2014-2016
- */
- 
- /* global angular */
- 
-(function () {
-    'use strict';
-
-    var thisModule = angular.module('pipGuidesData', ['pipRest', 'pipDataModel']);
-
-    thisModule.provider('pipGuidesData', function () {
-        var PAGE_SIZE = 5;
-
-        // Read all guides
-        this.readGuidesResolver = function () {
-            return /* @ngInject */ ['$stateParams', 'pipRest', function ($stateParams, pipRest) {
-                return pipRest.guides().query().$promise;
-            }];
-        };
-        
-        this.readIntroGuidesResolver = function () {
-            return /* @ngInject */ ['$stateParams', 'pipRest', function ($stateParams, pipRest) {
-                return pipRest.guides().query({
-                        type: 'intro',
-                        status : 'completed'
-                }).$promise;
-            }];
-        };
-
-        this.readGuideResolver = function () {
-            return /* @ngInject */ ['$stateParams', 'pipRest', function ($stateParams, pipRest) {
-                return pipRest.guides().get({
-                    id: $stateParams.id || '55bf23d3bb22aa175c3e498e'
-                }).$promise;
-            }];
-        };
-
-        // CRUD operations and other business methods
-        this.$get = ['pipRest', '$stateParams', 'pipDataModel', function (pipRest, $stateParams, pipDataModel) {
-            return {
-                partyId: pipRest.partyId,
-
-                updateGuide: function (params, successCallback, errorCallback) {
-                    params.resource = 'guides';
-                    params.skipTransactionBegin = true;
-                    params.skipTransactionEnd = false;
-                    pipDataModel.update(
-                        params,
-                        successCallback,
-                        errorCallback
-                    );
-                },
-
-                readGuides: function(params, successCallback, errorCallback) {
-                    params.resource = 'guides';
-                    params.party_id = pipRest.partyId($stateParams);
-                    params.type = 'intro';
-                    pipDataModel.read(params, successCallback, errorCallback);
-                },
-
-                createGuideWithFiles: function(params, successCallback, errorCallback) {
-                    params.skipTransactionEnd = true;
-                    pipDataModel.saveFiles(params, function() {
-                        params.resource = 'guides';
-                        params.skipTransactionBegin = true;
-                        params.skipTransactionEnd = false;
-                        pipDataModel.create(
-                            params,
-                            successCallback,
-                            errorCallback
-                        );
-                    });
-                },
-                
-                updateGuideWithFiles: function(params, successCallback, errorCallback) {
-                    params.skipTransactionEnd = true;
-                    pipDataModel.saveFiles(params, function() {
-                        params.resource = 'guides';
-                        params.skipTransactionBegin = true;
-                        params.skipTransactionEnd = false;
-                        pipDataModel.update(
-                            params,
-                            successCallback,
-                            errorCallback
-                        );
-                    });
-                },
-
-                createGuide: function (params, successCallback, errorCallback) {
-                    params.resource = 'guides';
-                    params.skipTransactionBegin = true;
-                    params.skipTransactionEnd = false;
-                    pipDataModel.create(
-                        params,
-                        successCallback,
-                        errorCallback
-                    );
-                },
-                
-                deleteGuide: function(params, successCallback, errorCallback) {
-                    params.resource = 'guides';
-                    pipDataModel.remove(params, successCallback, errorCallback);
-                }
-
-            }
-        }];
-    });
-
-})();
-/**
- * @file Image sets data model
- * @copyright Digital Living Software Corp. 2014-2016
- */
- 
- /* global angular */
- 
-(function () {
-    'use strict';
-    
-    var thisModule = angular.module('pipImageSetsData', ['pipRest', 'pipDataModel']);
-
-    thisModule.provider('pipImageSetsData', function () {
-        var PAGE_SIZE = 15;
-
-        // Read all image sets
-        this.readImageSetsResolver = function () {
-            return /* @ngInject */ ['$stateParams', 'pipRest', function ($stateParams, pipRest) {
-                return pipRest.image_sets().get({
-                    paging: 1,
-                    skip: 0,
-                    take: PAGE_SIZE,
-                    search: $stateParams.search,
-                    //tags: $stateParams.search
-                }).$promise;
-            }];
-        };
-
-        this.readImageSetResolver = function () {
-            return /* @ngInject */ ['$stateParams', 'pipRest', function ($stateParams, pipRest) {
-                return pipRest.image_sets().get({
-                    id: $stateParams.id
-                }).$promise;
-            }];
-        };
-
-        // CRUD operations and other business methods
-        this.$get = ['pipRest', '$stateParams', 'pipDataModel', function (pipRest, $stateParams, pipDataModel) {
-
-            return {
-                partyId: pipRest.partyId,
-
-                readImageSets: function (params, transaction, successCallback, errorCallback) {
-                    params.resource = 'image_sets';
-
-                    params.skipTransactionBegin = true;
-                    params.skipTransactionEnd = false;
-                    params.item.search = $stateParams.search || params.item.search;
-                   // params.item.tags = $stateParams.search || params.item.search;
-
-                    params.item.party_id = pipRest.partyId($stateParams);
-                    params.item.take = PAGE_SIZE;
-                    params.item.paging = 1;
-
-                    pipDataModel.page(
-                        params,
-                        successCallback,
-                        errorCallback
-                    );
-                },
-
-                updateImageSet: function (params, successCallback, errorCallback) {
-                    params.resource = 'image_sets';
-                    params.skipTransactionBegin = true;
-                    params.skipTransactionEnd = false;
-                    pipDataModel.update(
-                        params,
-                        successCallback,
-                        errorCallback
-                    );
-                },
-
-                createImageSet: function (params, successCallback, errorCallback) {
-                    params.resource = 'image_sets';
-                    params.skipTransactionBegin = true;
-                    params.skipTransactionEnd = false;
-                    pipDataModel.create(
-                        params,
-                        successCallback,
-                        errorCallback
-                    );
-                },
-
-                createImageSetWithFiles: function(params, successCallback, errorCallback) {
-                    params.skipTransactionEnd = true;
-                    pipDataModel.saveFiles(params, function() {
-                        params.resource = 'image_sets';
-                        params.skipTransactionBegin = true;
-                        params.skipTransactionEnd = false;
-                        pipDataModel.create(
-                            params,
-                            successCallback,
-                            errorCallback
-                        );
-                    });
-                },
-
-                updateImageSetWithFiles: function(params, successCallback, errorCallback) {
-                    params.skipTransactionEnd = true;
-                    pipDataModel.saveFiles(params, function() {
-                        params.resource = 'image_sets';
-                        params.skipTransactionBegin = true;
-                        params.skipTransactionEnd = false;
-                        pipDataModel.update(
-                            params,
-                            successCallback,
-                            errorCallback
-                        );
-                    });
-                },
-
-                deleteImageSet: function(params, successCallback, errorCallback) {
-                    params.resource = 'image_sets';
-                    pipDataModel.remove(params, successCallback, errorCallback);
-                }
-            }
-        }];
-    });
-
-})();
-
-/**
- * @file Session data model
- * @copyright Digital Living Software Corp. 2014-2016
- */
-
-/* global _, angular */
-
-(function () {
-    'use strict';
-
-    var thisModule = angular.module('pipSessionData', ['pipRest', 'pipSessionCache']);
-
-    thisModule.provider('pipSessionData', function() {
-
-        readUserResolver.$inject = ['pipSessionCache'];
-        readPartyResolver.$inject = ['pipSessionCache', '$stateParams'];
-        readConnectionResolver.$inject = ['pipSessionCache', '$stateParams'];
-        readSettingsResolver.$inject = ['pipSessionCache'];
-        readSessionsUserResolver.$inject = ['$stateParams', 'pipRest', '$rootScope'];
-        readSessionIdResolver.$inject = ['$stateParams', 'pipSession'];
-        this.readUserResolver = /* @ngInject */ readUserResolver;
-        this.readPartyResolver = /* @ngInject */ readPartyResolver;
-        this.readConnectionResolver = /* @ngInject */ readConnectionResolver;
-        this.readSettingsResolver = /* @ngInject */ readSettingsResolver;
-
-        this.readSessionsUserResolver = /* @ngInject */ readSessionsUserResolver;
-        this.readSessionIdResolver = /* @ngInject */ readSessionIdResolver;
-
-        this.$get = ['$rootScope', '$stateParams', 'pipRest', function($rootScope, $stateParams, pipRest) {
-            return {
-                getSessionId: getSessionId,
-                removeSession: removeSession
-            };
-
-            function getSessionId(pipSession){
-                return function () {
-                    return pipSession.sessionId();
-                };
-            };
-
-            function removeSession(transaction, session, successCallback, errorCallback) {
-                var tid = transaction.begin('REMOVING');
-                if (!tid) return;
-
-                pipRest.userSessions().remove(
-                    {
-                        id: session.id,
-                        party_id: $stateParams.id
-                    },
-                    function (removedSession) {
-                        if (transaction.aborted(tid)) return;
-                        else transaction.end();
-
-                        if (successCallback) successCallback(removedSession);
-                    },
-                    function (error) {
-                        transaction.end(error);
-                        if (errorCallback) errorCallback(error);
-                    }
-                );
-            };
-            
-        }];
-        //--------------
-
-        function readUserResolver(pipSessionCache) {
-            return pipSessionCache.readUser();                             
-        };
-
-        function readPartyResolver(pipSessionCache, $stateParams) {
-            return pipSessionCache.readParty($stateParams);
-        };
-
-        function readConnectionResolver(pipSessionCache, $stateParams) {
-            return pipSessionCache.readConnection($stateParams);
-        };
-
-        function readSettingsResolver(pipSessionCache) {
-            return pipSessionCache.readSettings();                             
-        };
-
-        function readSessionsUserResolver($stateParams, pipRest, $rootScope) {
-            return pipRest.userSessions().query({
-                party_id: $stateParams.id
-            }).$promise;
-        };
-
-        function readSessionIdResolver($stateParams, pipSession) {
-            return pipSession.sessionId();
-        };
-        
-    });
-
-})();
-
-/**
- * @file Settings data model
- * @copyright Digital Living Software Corp. 2014-2016
- * @todo Rewrite, use cached settings, remove unrelated methods
- */
-
-/* global _, angular */
-
-(function () {
-    'use strict';
-
-    var thisModule = angular.module('pipSettingsData', ['pipRest', 'pipSessionData', 'pipSessionCache', 'pipDataModel']);
-
-    thisModule.provider('pipSettingsData', ['pipSessionDataProvider', function(pipSessionDataProvider) {
-
-        this.readSettingsResolver = pipSessionDataProvider.readSettingsResolver;
-
-        this.$get = ['$rootScope', '$stateParams', 'pipRest', 'pipSessionCache', 'pipSession', 'pipDataModel', function($rootScope, $stateParams, pipRest, pipSessionCache, pipSession, pipDataModel) {
-            return {
-                // Saving generic settings
-                saveSettings: saveSettings,
-
-                readSettings: readSettings,
-
-                reReadSettings: reReadSettings
-
-            };
-
-            function readSettings(successCallback, errorCallback) {
-                pipSessionCache.readSettings(successCallback, errorCallback)
-            };
-
-            // force read settings from server and update cache
-            function reReadSettings(successCallback, errorCallback) {
-                pipRest.partySettings().get(
-                    {
-                        party_id: pipSession.userId()
-                    },
-                    function (settings) {
-                        settings = settings || {};
-                        pipSessionCache.onSettingsUpdate(settings);
-                        if (successCallback) successCallback(settings);
-                    },
-                    errorCallback
-                );
-            };
-
-            function saveSettings(settings, keys, successCallback, errorCallback) {
-                // Extract specific keys
-                settings = keys ? _.pick(settings, keys) : settings;
-                settings.party_id = pipSession.userId();
-                var oldSettings = _.cloneDeep($rootScope.$settings);
-                pipSessionCache.onSettingsUpdate(settings);
-
-                var params = {};
-                params.resource = 'partySettings';
-                params.item = settings;
-                params.item.creator_id = pipSession.userId();
-
-                pipDataModel.create(
-                    params,
-                    successCallback,
-                    function(error) {
-                        pipSessionCache.onSettingsUpdate(oldSettings);
-
-                        if (errorCallback) errorCallback(error);
-                    }
-                );
-            };
-        }];
-    }]);
-
-})();
-
-/**
- * @file Tags data model
- * @copyright Digital Living Software Corp. 2014-2016
- */
-
-/* global angular */
-
-(function () {
-    'use strict';
-
-    var thisModule = angular.module('pipTagsData', ['pipRest' , 'pipDataModel', 'pipTagsCache']);
-
-    thisModule.provider('pipTagsData', function() {
-        
-        this.readTagsResolver = function() {
-            return /* @ngInject */ ['$stateParams', 'pipRest', 'pipTagsCache', function($stateParams, pipRest, pipTagsCache) {
-                return pipTagsCache.readTags({
-                    item: { party_id: pipRest.partyId($stateParams) }
-                });
-            }];
-        };
-
-        this.$get = ['$stateParams', '$state', 'pipRest', 'pipDataModel', 'pipTagsCache', function($stateParams, $state, pipRest, pipDataModel, pipTagsCache) {
-            return {
-                partyId: pipRest.partyId,
-                
-                readTags: function(params, successCallback, errorCallback) {
-                    pipTagsCache.readTags(params, successCallback, errorCallback);
-                }
-            }
-        }];
-    });
-
-})();
-
-/**
- * @file Tips data model
- * @copyright Digital Living Software Corp. 2014-2016
- */
-
-/* global angular */
-
-(function () {
-    'use strict';
-
-    var thisModule = angular.module('pipTipsData', ['pipRest', 'pipDataModel']);
-
-    thisModule.provider('pipTipsData', function () {
-        var PAGE_SIZE = 100;
-
-        // Read all tips
-        this.readTipsResolver = function () {
-            return /* @ngInject */ ['$stateParams', 'pipRest', function ($stateParams, pipRest) {
-                return pipRest.tips().query().$promise;
-            }];
-        };
-
-        this.readTipResolver = function () {
-            return /* @ngInject */ ['$stateParams', 'pipRest', function ($stateParams, pipRest) {
-                return pipRest.tips().get({
-                    id: $stateParams.id
-                }).$promise;
-            }];
-        };
-
-        // CRUD operations and other business methods
-        this.$get = ['pipRest', '$stateParams', 'pipDataModel', function (pipRest, $stateParams, pipDataModel) {
-
-            return {
-                partyId: pipRest.partyId,
-
-                readTips: function (params, transaction, successCallback, errorCallback) {
-                    params.resource = 'tips';
-
-                    params.skipTransactionBegin = true;
-                    params.skipTransactionEnd = false;
-                    params.item.search = $stateParams.search;
-                    params.item.tags = $stateParams.search;
-
-                    params.item.party_id = pipRest.partyId($stateParams);
-                    params.item.take = PAGE_SIZE;
-                    params.item.paging = 1;
-
-                    pipDataModel.page(
-                        params,
-                        successCallback,
-                        errorCallback
-                    );
-                },
-
-                updateTip: function (params, successCallback, errorCallback) {
-                    params.resource = 'tips';
-                    params.skipTransactionBegin = true;
-                    params.skipTransactionEnd = false;
-                    pipDataModel.update(
-                        params,
-                        successCallback,
-                        errorCallback
-                    );
-                },
-
-                createTip: function (params, successCallback, errorCallback) {
-                    params.resource = 'tips';
-                    params.skipTransactionBegin = true;
-                    params.skipTransactionEnd = false;
-                    pipDataModel.create(
-                        params,
-                        successCallback,
-                        errorCallback
-                    );
-                },
-
-                createTipWithFiles: function(params, successCallback, errorCallback) {
-                    params.skipTransactionEnd = true;
-                    pipDataModel.saveFiles(params, function() {
-                        params.resource = 'tips';
-                        params.skipTransactionBegin = true;
-                        params.skipTransactionEnd = false;
-                        pipDataModel.create(
-                            params,
-                            successCallback,
-                            errorCallback
-                        );
-                    });
-                },
-
-                updateTipWithFiles: function(params, successCallback, errorCallback) {
-                    params.skipTransactionEnd = true;
-                    pipDataModel.saveFiles(params, function() {
-                        params.resource = 'tips';
-                        params.skipTransactionBegin = true;
-                        params.skipTransactionEnd = false;
-                        pipDataModel.update(
-                            params,
-                            successCallback,
-                            errorCallback
-                        );
-                    });
-                },
-
-                deleteTip: function(params, successCallback, errorCallback) {
-                    params.resource = 'tips';
-                    pipDataModel.remove(params, successCallback, errorCallback);
-                }
-            }
-        }];
-    });
-
-})();
-
-/**
- * @file Users data model
- * @copyright Digital Living Software Corp. 2014-2016
- */
-
-/* global angular */
-
-(function () {
-    'use strict';
-
-    var thisModule = angular.module('pipUsersData', ['pipRest']);
-
-    thisModule.provider('pipUsersData', function () {
-
-        this.readUsersResolver = function () {
-            return /* @ngInject */ ['$stateParams', 'pipRest', function ($stateParams, pipRest) {
-                return pipRest.users().page({
-                    party_id: $stateParams.id,
-                    paging: $stateParams.paging || 1,
-                    skip: $stateParams.skip || 0,
-                    take: $stateParams.take || 15
-                }).$promise;
-            }];
-        };
-
-        this.readUserResolver = function () {
-            return /* @ngInject */ ['$stateParams', 'pipRest', function ($stateParams, pipRest) {
-                return pipRest.users().get({
-                    id: $stateParams.id,
-                    party_id: pipRest.partyId($stateParams)
-                }).$promise;
-
-            }];
-        };
-
-        this.readActivitiesUserResolver = /* @ngInject */
-            ['$stateParams', 'pipRest', '$rootScope', function ($stateParams, pipRest, $rootScope) {
-                return pipRest.partyActivities().page({
-                    party_id: $rootScope.$user.id,
-                    paging: 1,
-                    skip: 0,
-                    take: 25
-                }).$promise;
-            }];
-
-        // CRUD operations and other business methods
-        this.$get = ['pipRest', '$stateParams', function (pipRest, $stateParams) {   
-            return {
-                partyId: pipRest.partyId,
-
-                readUsers: function (params, transaction, successCallback, errorCallback) {
-                    pipRest.users().page(
-                        {
-                            party_id: pipRest.partyId($stateParams),
-                            paging: 1,
-                            skip: params.start,
-                            search: params.item.search ,
-                            active: params.item.active,
-                            paid: params.item.paid,
-                            admin: params.item.admin,
-                            take: 15
-                        },
-                        function (pagedUsers) {
-                            if (successCallback) successCallback(pagedUsers);
-                        },
-                        function (error) {
-                            errorCallback(error);
-                        }
-                    );
-                },
-                
-                updateUser: function (item, transaction, successCallback, errorCallback) {
-                    pipRest.users().update(
-                        item.item,
-                        function (updatedItem) {
-                            if (successCallback) successCallback(updatedItem);
-                        },
-                        function (error) {
-                            errorCallback(error);
-                        }
-                    );
-                }
-
-            }
-        }];
-    });
 
 })();
 //# sourceMappingURL=pip-webui-rest.js.map

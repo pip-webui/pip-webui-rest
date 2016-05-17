@@ -17,6 +17,16 @@
     thisModule.provider('pipRest', function($httpProvider) {
         var serverUrl = '';
         var serverUrlFixed = false;
+        
+        var api = [];
+        
+        this.addApi = addApi;
+        
+        function addApi(extension) {
+            for (var call in extension) {
+                api[call] = extension[call];
+            }
+        };
 
         // Set default API version
         $httpProvider.defaults.headers.common['api-version'] = '1.0';
@@ -86,7 +96,7 @@
                 );
             };
 
-            return {
+           var restApi = {
                 version: function (newVersion) {
                     if (newVersion)
                         $httpProvider.defaults.headers.common['api-version'] = newVersion;
@@ -545,6 +555,17 @@
                 createPartyCollection: createPartyCollection
 
             };
+            
+            function addApi() {
+                for (var call in api) {
+                    restApi[call] = api[call];
+                }
+            };
+            
+            addApi();
+        
+        
+            return restApi;
         };
     });
 

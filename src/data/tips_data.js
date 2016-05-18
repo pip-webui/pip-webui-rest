@@ -46,7 +46,7 @@
                     params.item.take = PAGE_SIZE;
                     params.item.paging = 1;
 
-                    pipDataModel.page(
+                    return pipDataModel.page(
                         params,
                         successCallback,
                         errorCallback

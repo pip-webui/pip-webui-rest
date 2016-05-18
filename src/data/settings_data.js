@@ -27,7 +27,7 @@
             };
 
             function readSettings(successCallback, errorCallback) {
-                pipSessionCache.readSettings(successCallback, errorCallback)
+                return pipSessionCache.readSettings(successCallback, errorCallback)
             };
 
             // force read settings from server and update cache

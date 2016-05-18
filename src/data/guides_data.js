@@ -57,7 +57,7 @@
                     params.resource = 'guides';
                     params.party_id = pipRest.partyId($stateParams);
                     params.type = 'intro';
-                    pipDataModel.read(params, successCallback, errorCallback);
+                    return pipDataModel.read(params, successCallback, errorCallback);
                 },
 
                 createGuideWithFiles: function(params, successCallback, errorCallback) {

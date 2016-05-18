@@ -272,7 +272,7 @@
     }]);
 
     thisModule.service('pipSessionCache',
-        ['$rootScope', '$stateParams', 'pipTranslate', 'pipRest', 'localStorageService', 'pipAccess', 'pipEnums', 'pipSession', 'pipDataCache', function($rootScope, $stateParams, pipTranslate, pipRest, localStorageService,
+        ['$rootScope', '$stateParams', '$q', 'pipTranslate', 'pipRest', 'localStorageService', 'pipAccess', 'pipEnums', 'pipSession', 'pipDataCache', function($rootScope, $stateParams, $q, pipTranslate, pipRest, localStorageService,
             pipAccess, pipEnums, pipSession, pipDataCache) {
                         
             return {
@@ -484,8 +484,9 @@
 
                 if (settings) {
                     if (successCallback) successCallback(settings);
-
-                    return settings;
+                    var defer = $q.defer();
+                    defer.resolve(settings);
+                    return defer.promise;
                 }
 
                 // Read settings from server
@@ -1232,7 +1233,7 @@
                     params.resource = 'guides';
                     params.party_id = pipRest.partyId($stateParams);
                     params.type = 'intro';
-                    pipDataModel.read(params, successCallback, errorCallback);
+                    return pipDataModel.read(params, successCallback, errorCallback);
                 },
 
                 createGuideWithFiles: function(params, successCallback, errorCallback) {
@@ -1529,7 +1530,7 @@
             };
 
             function readSettings(successCallback, errorCallback) {
-                pipSessionCache.readSettings(successCallback, errorCallback)
+                return pipSessionCache.readSettings(successCallback, errorCallback)
             };
 
             // force read settings from server and update cache
@@ -1657,7 +1658,7 @@
                     params.item.take = PAGE_SIZE;
                     params.item.paging = 1;
 
-                    pipDataModel.page(
+                    return pipDataModel.page(
                         params,
                         successCallback,
                         errorCallback

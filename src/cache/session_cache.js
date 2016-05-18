@@ -16,7 +16,7 @@
     });
 
     thisModule.service('pipSessionCache',
-        function($rootScope, $stateParams, pipTranslate, pipRest, localStorageService,
+        function($rootScope, $stateParams, $q, pipTranslate, pipRest, localStorageService,
             pipAccess, pipEnums, pipSession, pipDataCache) {
                         
             return {
@@ -228,8 +228,9 @@
 
                 if (settings) {
                     if (successCallback) successCallback(settings);
-
-                    return settings;
+                    var defer = $q.defer();
+                    defer.resolve(settings);
+                    return defer.promise;
                 }
 
                 // Read settings from server

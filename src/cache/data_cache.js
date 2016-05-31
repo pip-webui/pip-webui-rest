@@ -186,6 +186,7 @@
                     },
                     function (err) {
                         // Return error
+                        console.log('***** FAILED to load from server ' + name);
                         deferred.reject(err);
                         if (errorCallback) errorCallback(err);
                     }

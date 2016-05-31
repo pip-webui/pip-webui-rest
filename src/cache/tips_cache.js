@@ -18,6 +18,7 @@
             };
 
             function readTips(params, successCallback, errorCallback) {
+                params = params || {};
                 params.resource = 'tips';
                 params.item = params.item || {};
 

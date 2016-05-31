@@ -25,7 +25,7 @@
                 partyId: pipRest.partyId,
                 
                 readTags: function(params, successCallback, errorCallback) {
-                    pipTagsCache.readTags(params, successCallback, errorCallback);
+                    return pipTagsCache.readTags(params, successCallback, errorCallback);
                 }
             }
         };

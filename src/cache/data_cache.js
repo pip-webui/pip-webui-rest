@@ -27,7 +27,6 @@
                 store: store,
                 storePermanent: storePermanent,
                 remove: remove,
-                updateItem: updateItem,
                 removeItem: removeItem,
                 removeDecorator: removeDecorator,
 
@@ -122,6 +121,26 @@
                 delete cache[generateKey(name, params)];
             };
 
+            function updateItem(name, item, params) {
+                if (name == null) throw new Error('name cannot be null');
+                if (item == null) return;
+
+                var data = retrieve(name, params);
+
+                if (data != null) {
+                    var isAdded = false;
+                    for (var i = 0; i < data.length; i++) {
+                        if (data[i].id == item.id) {
+                            data[i] = item;
+                            isAdded = true;
+                            return;
+                        }
+                    }
+                    if (!isAdded) data.push(item);
+                    store(name, data, params);
+                }
+            };
+
             // Tries to retrieve collection from the cache, otherwise load it from server
             function retrieveOrLoad(params, successCallback, errorCallback) {
                 if (params == null) throw new Error('params cannot be null');
@@ -177,26 +196,6 @@
                 return deferred.promise;
             };
 
-            function updateItem(name, item, params) {
-                if (name == null) throw new Error('name cannot be null');
-                if (item == null) return;
-
-                var data = retrieve(name, params);
-
-                if (data != null) {
-                    var isAdded = false;
-                    for (var i = 0; i < data.length; i++) {
-                        if (data[i].id == item.id) {
-                            data[i] = item;
-                            isAdded = true;
-                            return;
-                        }
-                    }
-                    if (!isAdded) data.push(item);
-                    store(name, data, params);
-                }
-            };
-
             function removeItem(name, item) {
                 if (name == null) throw new Error('name cannot be null');
                 if (item == null) return;
@@ -228,22 +227,45 @@
                 };
             };
 
-            // OBSOLETE - WILL BE REMOVED
-            function addDecorator(resource, params, successCallback) {
-                return updateDecorator(resource, params, successCallback)
-            };
-
             function updateDecorator(resource, params, successCallback) {
                 return function (item) {
                     var nameId, name;
                     if (params && params.party_id) nameId = '_' + params.party_id;
                     else if (params && params.item && params && params.item.party_id) nameId = '_' + params.item.party_id;
                     name = resource + nameId;
+
+                    for (var key in cache) {
+                        if (key == name || key.startsWith(name + '_')) {
+                            var data = cache[key];
+                            if (angular.isArray(data)) {
+                                for (var i = 0; i < data.length; i++) {
+                                    if (data[i].id == item.id) {
+                                        data[i] = item;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if (successCallback) successCallback(item);
+                };
+            };
+
+            // OBSOLETE - WILL BE REMOVED ONCE CODE IS REFACTORED
+            function addDecorator(resource, params, successCallback) {
+                return function (item) {
+                    var nameId, name;
+                    if (params && params.party_id) nameId = '_' + params.party_id;
+                    else if (params && params.item && params && params.item.party_id) nameId = '_' + params.item.party_id;
+                    name = resource + nameId;
+
+                    // Invalidate cache on add
                     clear(name);
 
                     if (successCallback) successCallback(item);
                 };
             };
+
         };
         //-----------------------
 

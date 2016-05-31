@@ -11,17 +11,15 @@
 
     var thisModule = angular.module('pipSettingsData', ['pipRest', 'pipSessionData', 'pipSessionCache', 'pipDataModel']);
 
-    thisModule.provider('pipSettingsData', function(pipSessionDataProvider) {
+    thisModule.provider('pipSettingsData', function (pipSessionDataProvider) {
 
         this.readSettingsResolver = pipSessionDataProvider.readSettingsResolver;
 
-        this.$get = function($rootScope, $stateParams, pipRest, pipSessionCache, pipSession, pipDataModel) {
+        this.$get = function ($rootScope, $stateParams, pipRest, pipSessionCache, pipSession, pipDataModel) {
             return {
                 // Saving generic settings
                 saveSettings: saveSettings,
-
                 readSettings: readSettings,
-
                 reReadSettings: reReadSettings
 
             };
@@ -32,7 +30,7 @@
 
             // force read settings from server and update cache
             function reReadSettings(successCallback, errorCallback) {
-                pipRest.partySettings().get(
+                return pipRest.partySettings().get(
                     {
                         party_id: pipSession.userId()
                     },
@@ -42,7 +40,7 @@
                         if (successCallback) successCallback(settings);
                     },
                     errorCallback
-                );
+                ).$promise;
             };
 
             function saveSettings(settings, keys, successCallback, errorCallback) {
@@ -60,7 +58,7 @@
                 pipDataModel.create(
                     params,
                     successCallback,
-                    function(error) {
+                    function (error) {
                         pipSessionCache.onSettingsUpdate(oldSettings);
 
                         if (errorCallback) errorCallback(error);

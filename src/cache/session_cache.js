@@ -10,23 +10,23 @@
 
     var thisModule = angular.module('pipSessionCache', ['pipCore', 'pipRest', 'pipDataCache']);
 
-    thisModule.run(function($rootScope, pipSessionCache) {
+    thisModule.run(function ($rootScope, pipSessionCache) {
         $rootScope.$on('pipSessionOpened', pipSessionCache.init);
         $rootScope.$on('pipSessionClosed', pipSessionCache.clear);
     });
 
     thisModule.service('pipSessionCache',
-        function($rootScope, $stateParams, $q, pipTranslate, pipRest, localStorageService,
-            pipAccess, pipEnums, pipSession, pipDataCache) {
-                        
+        function ($rootScope, $stateParams, $q, pipTranslate, pipRest, localStorageService,
+                  pipAccess, pipEnums, pipSession, pipDataCache) {
+
             return {
                 init: init,
                 clear: clear,
-                
+
                 readUser: readUser,
-				readParty: readParty,
-				readConnection: readConnection,
-                
+                readParty: readParty,
+                readConnection: readConnection,
+
                 readSettings: readSettings,
                 onSettingsUpdate: onSettingsUpdate
             };
@@ -35,7 +35,7 @@
             function init(event, data) {
                 if (data == null)
                     throw new Error('Unexpected error: issues in openning session');
-                
+
                 clear();
                 if (data.serverUrl) $rootScope.$serverUrl = data.serverUrl;
                 storeUser(data.user, null);
@@ -44,7 +44,7 @@
             function clear() {
                 // Clear data cache
                 pipDataCache.clear();
-                
+
                 // Clear global variables
                 delete $rootScope.$user;
                 delete $rootScope.$party;
@@ -57,18 +57,18 @@
                 // Get parameters from cache if they are not defined
                 user = user || pipDataCache.retrieve('user');
                 party = party || pipDataCache.retrieve('party');
-                
+
                 // Exit if user is not defined
                 if (user == null) return;
 
                 // Update user access rights
-                if (party == null) 
+                if (party == null)
                     user = pipAccess.asOwner(user);
                 else if (user.id == party.id)
                     user = pipAccess.asOwner(user);
-                else 
+                else
                     user = pipAccess.toParty(user, party);
-                    
+
                 // Save user with new rights back to cache
                 pipDataCache.storePermanent('user', user);
                 $rootScope.$user = user;
@@ -88,12 +88,12 @@
             };
 
             function storeUser(user) {
-                if (user == null) return;                  
+                if (user == null) return;
 
                 pipDataCache.storePermanent('user', user);
                 $rootScope.$user = user;
                 storeUserTheme(user);
-                
+
                 // Activate user language
                 pipTranslate.use(user.language, false, true);
                 updateUserRights(user, null);
@@ -101,29 +101,30 @@
 
             function readUser(successCallback, errorCallback) {
                 // Avoid broken session
-                if (!pipSession.opened()) 
+                if (!pipSession.opened())
                     throw new Error('User is not authenticated.');
-    
-                var 
+
+                var
                     userId = pipSession.userId(),
                     user = pipDataCache.retrieve('user');
-    
-                // Return user from cache    
+
+                // Return user from cache
                 if (user) {
                     if (user.id != userId)
-                        throw new Error('Unexpected error: issues in openning session');
-                        
+                        throw new Error('Unexpected error: issues in opening session');
+
                     if (successCallback) successCallback(user);
-                        
-                    return user;
+                    var deferred = $q.defer();
+                    deferred.resolve(user);
+                    return deferred.promise;
                 }
-    
+
                 // Read user from server
                 return pipRest.users().get(
-                    { id: userId }, 
+                    {id: userId},
                     function (user) {
                         // Double check
-                        if (user.id != userId) 
+                        if (user.id != userId)
                             user == null;
 
                         storeUser(user);
@@ -151,12 +152,14 @@
                     storeUserTheme($rootScope.$user);
 
                     if (successCallback) successCallback(party);
-                    return party;
+                    var deferred = $q.defer();
+                    deferred.resolve(party);
+                    return deferred.promise;
                 }
 
                 // Read party from server
                 return pipRest.parties().get(
-                    { id: partyId },
+                    {id: partyId},
                     function (party) {
                         updateUserRights(null, party);
                         pipDataCache.storePermanent('party', party);
@@ -172,46 +175,47 @@
 
             function readConnection(stateParams, successCallback, errorCallback) {
                 // Avoid broken session
-                if (!pipSession.opened()) 
+                if (!pipSession.opened())
                     throw new Error('User is not authenticated.');
-    
-                var 
+
+                var
                     userId = pipSession.userId(),
                     partyId = stateParams.party_id || userId,
                     connection = pipDataCache.retrieve('connection');
 
                 // Clear connection it does not match user or party
-                if (connection 
+                if (connection
                     && (connection.party_id != userId
                     || connection.to_party_id != partyId)) {
                     connection = null;
                     pipDataCache.remove('connection');
                     delete $rootScope.$connection;
                 }
-    
+
                 // For owner connection is not defined
                 if (userId == partyId) {
                     if (successCallback) successCallback(connection);
-                        
-                    return connection;
+                    var deferred = $q.defer();
+                    deferred.resolve(connection);
+                    return deferred.promise;
                 }
-        
+
                 // Read connection from server
                 return pipRest.connections().query(
-                    { 
-                        party_id: userId, 
-                        to_party_id: partyId, 
-                        accept: pipEnums.ACCEPTANCE.ACCEPTED 
-                    }, 
+                    {
+                        party_id: userId,
+                        to_party_id: partyId,
+                        accept: pipEnums.ACCEPTANCE.ACCEPTED
+                    },
                     function (connections) {
                         // There are shall not be more than one active connection
-                        if (connections && connections.length > 0) 
-                            connection = connections[0];                            
+                        if (connections && connections.length > 0)
+                            connection = connections[0];
                         else connection = null;
 
                         pipDataCache.storePermanent('connection', connection);
                         $rootScope.$connection = connection;
-                                                                                        
+
                         if (successCallback) successCallback(connection);
                     },
                     errorCallback
@@ -228,9 +232,9 @@
 
                 if (settings) {
                     if (successCallback) successCallback(settings);
-                    var defer = $q.defer();
-                    defer.resolve(settings);
-                    return defer.promise;
+                    var deferred = $q.defer();
+                    deferred.resolve(settings);
+                    return deferred.promise;
                 }
 
                 // Read settings from server
@@ -264,9 +268,7 @@
                 }
 
                 if (successCallback) successCallback(item);
-                //  };
             };
-
         }
     );
 

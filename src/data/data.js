@@ -21,6 +21,8 @@
         'pipFeedbacksData',
         'pipGuidesData',
         'pipImageSetsData',
+
+        'pipTipsCache',
         'pipTipsData'
     ]);
     

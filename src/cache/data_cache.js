@@ -10,51 +10,82 @@
 
     var thisModule = angular.module('pipDataCache', ['pipDataModel']);
 
-    thisModule.provider('pipDataCache', function() {
-        var 
+    thisModule.provider('pipDataCache', function () {
+        var
             CACHE_TIMEOUT = 5 * 60000, // 5 mins or make it configurable
             cache = {};
-            
+
         this.timeout = timeout;
-            
-        this.$get = function($q, pipDataModel) {
+
+        this.$get = function ($q, pipDataModel) {
             return {
                 timeout: timeout,
-                
+
                 clear: clear,
                 retrieve: retrieve,
                 retrieveOrLoad: retrieveOrLoad,
                 store: store,
                 storePermanent: storePermanent,
                 remove: remove,
-
-                addItem: addItem,
                 updateItem: updateItem,
                 removeItem: removeItem,
-                
+                removeDecorator: removeDecorator,
+
+                // OBSOLETE - will be removed
                 addDecorator: addDecorator,
                 updateDecorator: updateDecorator,
-                removeDecorator: removeDecorator
             };
             //-------------
-            
-            // Clear the entire cache
-            function clear() {
-                cache = {};
+
+            // Converts a string value into a numeric hash code
+            function hash(data) {
+                data = data || '';
+                if (!angular.isString(data)) {
+                    data = angular.toJson(data);
+                }
+                var h = 0, i, chr, len;
+                if (data == null || data.length === 0) return h;
+                for (i = 0, len = data.length; i < len; i++) {
+                    chr = data.charCodeAt(i);
+                    h = ((h << 5) - h) + chr;
+                    h |= 0; // Convert to 32bit integer
+                }
+                return h;
+            };
+
+            // Generates parameterized key
+            function generateKey(name, params) {
+                var h = hash(params);
+                return name + (h != 0 ? '_' + h : '');
+            };
+
+            // Clear the cache, globally or selectively
+            function clear(name) {
+                if (name == null) {
+                    cache = {};
+                } else {
+                    for (var key in cache) {
+                        if (key == name || key.startsWith(name + '_')) {
+                            console.log('****** Invalidated cache ' + key)
+                            delete cache[key];
+                        }
+                    }
+                }
             };
 
             // Try to retrieve collection from the cache
-            function retrieve(name) {
+            function retrieve(name, params) {
                 if (name == null) throw new Error('name cannot be null');
                 if (name == '') throw new Error('name cannot be empty');
 
-                var holder = cache[name];
+                var key = generateKey(name, params);
+                var holder = cache[key];
                 if (holder == null) return null;
 
                 // If expired then cleanup and return null
-                if (holder.expire 
+                if (holder.expire
                     && _.now() - holder.expire > CACHE_TIMEOUT) {
-                    delete cache[name];
+                    delete cache[key];
                     return null;
                 }
 
@@ -62,33 +93,33 @@
             };
 
             // Store collection into the cache
-            function store(name, data) {
+            function store(name, data, params) {
                 if (name == null) throw new Error('name cannot be null');
                 if (name == '') throw new Error('name cannot be empty');
 
-                cache[name] = {
+                cache[generateKey(name, params)] = {
                     expire: _.now(),
                     data: data
                 };
             };
 
             // Store collection into the cache without expiration
-            function storePermanent(name, data) {
+            function storePermanent(name, data, params) {
                 if (name == null) throw new Error('name cannot be null');
                 if (name == '') throw new Error('name cannot be empty');
 
-                cache[name] = {
+                cache[generateKey(name, params)] = {
                     expire: null,
                     data: data
                 };
             };
 
             // Remove collection from the cache
-            function remove(name) {
+            function remove(name, params) {
                 if (name == null) throw new Error('name cannot be null');
                 if (name == '') throw new Error('name cannot be empty');
 
-                delete cache[name];
+                delete cache[generateKey(name, params)];
             };
 
             // Tries to retrieve collection from the cache, otherwise load it from server
@@ -97,6 +128,7 @@
                 // todo add check params?
 
                 var name = (params.cache || params.resource);
+
                 if (params && params.party_id !== null && params.party_id !== undefined)
                     name = name + '_' + params.party_id;
                 else if (params && params.item && params.item.party_id !== null && params.item.party_id !== undefined)
@@ -105,31 +137,32 @@
                 // Retrieve data from cache
                 var filter = params.filter,
                     force = !!params.force,
-                    result = !force ? retrieve(name) : null;
+                    result = !force ? retrieve(name, params ? params.item : null) : null,
+                    deferred = $q.defer();
 
                 // Return result if it exists
                 if (result) {
-                    //console.log('***** Loaded from cache ' + name);
-                    //console.log(result);
+                    console.log('***** Loaded from cache ' + name);
+                    console.log(result);
                     if (filter) result = filter(result);
                     if (successCallback) successCallback(result);
-                    return result;
+                    deferred.resolve(result);
+                    return deferred.promise;
                 }
-
-                // Create deferred
-                var deferred = $q.defer();
 
                 // Load data from server
                 pipDataModel[params.singleResult ? 'readOne' : 'read'](
-                    params, 
+                    params,
                     function (data) {
                         // Store data in cache and return
-                        params.singleResult ? updateItem(name,data) : store(name, data);
+                        params.singleResult ?
+                            updateItem(name, data, params ? params.item : null) :
+                            store(name, data, params ? params.item : null);
                         if (filter) data = filter(data);
                         deferred.resolve(data);
 
-                    //console.log('***** Loaded from server ' + name);
-                    //console.log(data);
+                        // console.log('***** Loaded from server ' + name);
+                        // console.log(data);
 
                         if (successCallback) successCallback(data);
                     },
@@ -144,44 +177,11 @@
                 return deferred.promise;
             };
 
-            // todo if item exist in nameSpace?
-            function addItem(name, params, item) {
+            function updateItem(name, item, params) {
                 if (name == null) throw new Error('name cannot be null');
                 if (item == null) return;
 
-                var data = retrieve(name);
-
-                if (data == null)  data = []; // todo maybe reload cache data?
-                var index = -1;
-                for (var i = 0; i < data.length; i++) {
-                    if (data[i].id == item.id) {
-                        index = i;
-                        break;
-                    }
-                }
-                if (index == -1) data.push(item);
-                else data[i] = item;
-                store(name, data);
-            };
-
-            function addDecorator(resource, params, successCallback) {
-                return function(item) {
-                    var  nameId, name;
-                    if (params && params.party_id) nameId = '_' + params.party_id;
-                    else if (params && params.item && params && params.item.party_id) nameId = '_' + params.item.party_id;
-                        name = resource + nameId;
-
-                    updateItem(name, params, item);
-
-                    if (successCallback) successCallback(item);
-                };
-            };
-
-            function updateItem(name, params, item) {
-                if (name == null) throw new Error('name cannot be null');
-                if (item == null) return;
-
-                var data = retrieve(name);
+                var data = retrieve(name, params);
 
                 if (data != null) {
                     var isAdded = false;
@@ -193,63 +193,66 @@
                         }
                     }
                     if (!isAdded) data.push(item);
-                    store(name, data);
+                    store(name, data, params);
                 }
             };
 
-            function updateDecorator(resource, params, successCallback) {
-                return function(item) {
-                    var  nameId, name;
-                    if (params && params.party_id) nameId = '_' + params.party_id;
-                    else if (params && params.item && params && params.item.party_id) nameId = '_' + params.item.party_id;
-                    name = resource + nameId;
-
-                    updateItem(name, params, item);
-
-                    if (successCallback) successCallback(item);
-                };
-            };
-
-            function removeItem(name, params, item) {
+            function removeItem(name, item) {
                 if (name == null) throw new Error('name cannot be null');
                 if (item == null) return;
 
-                var data = retrieve(name);
-
-                if (data == null) return;
-
-                // delete item
-                for (var i = 0; i < data.length; i++) {
-                    if (data[i].id == item.id) {
-                        data.splice(i, 1);
-                        i--;
+                for (var key in cache) {
+                    if (key == name || key.startsWith(name + '_')) {
+                        var data = cache[key];
+                        if (angular.isArray(data)) {
+                            for (var i = 0; i < data.length; i++) {
+                                if (data[i].id == item.id) {
+                                    data.splice(i, 1);
+                                    i--;
+                                }
+                            }
+                        }
                     }
                 }
-                store(name, data);
             };
 
             function removeDecorator(resource, params, successCallback) {
-                return function(item) {
-                    var  nameId, name;
+                return function (item) {
+                    var nameId, name;
                     if (params && params.party_id) nameId = '_' + params.party_id;
                     else if (params && params.item && params && params.item.party_id) nameId = '_' + params.item.party_id;
                     name = resource + nameId;
 
-                        removeItem(name, params, params.item);
+                    removeItem(name, params.item);
                     if (successCallback) successCallback(item);
                 };
             };
 
+            // OBSOLETE - WILL BE REMOVED
+            function addDecorator(resource, params, successCallback) {
+                return updateDecorator(resource, params, successCallback)
+            };
+
+            function updateDecorator(resource, params, successCallback) {
+                return function (item) {
+                    var nameId, name;
+                    if (params && params.party_id) nameId = '_' + params.party_id;
+                    else if (params && params.item && params && params.item.party_id) nameId = '_' + params.item.party_id;
+                    name = resource + nameId;
+                    clear(name);
+
+                    if (successCallback) successCallback(item);
+                };
+            };
         };
         //-----------------------
 
         function timeout(newTimeout) {
-            if (newTimeout)
+            if (newTimeout) {
                 CACHE_TIMEOUT = newTimeout;
-            return CACHE_TIMEOUT;  
+            }
+            return CACHE_TIMEOUT;
         };
-        
     });
-
 })();
 

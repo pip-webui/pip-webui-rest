@@ -25,6 +25,11 @@
                 partyId: pipRest.partyId,
                 
                 readTags: function(params, successCallback, errorCallback) {
+                    params = params || {};
+                    params.item = params.item || {};
+                    if(params.item.party_id == null) {
+                        params.item.party_id = pipRest.partyId($stateParams);
+                    }
                     return pipTagsCache.readTags(params, successCallback, errorCallback);
                 }
             }

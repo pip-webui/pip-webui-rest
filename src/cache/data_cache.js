@@ -38,14 +38,23 @@
 
             // Converts a string value into a numeric hash code
             function hash(data) {
-                data = data || '';
-                if (!angular.isString(data)) {
-                    data = angular.toJson(data);
+                var filteredData = {};
+
+                // Filter only the generic parameters that can be relevant to the query
+                if(data != null) {
+                    filteredData.item = data.item;
+                    filteredData.party_id = data.party_id;
+                    filteredData.search = data.search;
+                    filteredData.paging = data.paging;
+                    filteredData.take = data.take;
+                    filteredData.skip = data.skip;
                 }
+
+                filteredData = angular.toJson(filteredData);
                 var h = 0, i, chr, len;
-                if (data == null || data.length === 0) return h;
-                for (i = 0, len = data.length; i < len; i++) {
-                    chr = data.charCodeAt(i);
+                if (filteredData == null || filteredData.length === 0) return h;
+                for (i = 0, len = filteredData.length; i < len; i++) {
+                    chr = filteredData.charCodeAt(i);
                     h = ((h << 5) - h) + chr;
                     h |= 0; // Convert to 32bit integer
                 }
@@ -149,15 +158,10 @@
 
                 var name = (params.cache || params.resource);
 
-                if (params && params.party_id !== null && params.party_id !== undefined)
-                    name = name + '_' + params.party_id;
-                else if (params && params.item && params.item.party_id !== null && params.item.party_id !== undefined)
-                    name = name + '_' + params.item.party_id;
-
                 // Retrieve data from cache
                 var filter = params.filter,
                     force = !!params.force,
-                    result = !force ? retrieve(name, params ? params.item : null) : null,
+                    result = !force ? retrieve(name, params) : null,
                     deferred = $q.defer();
 
                 // Return result if it exists
@@ -175,8 +179,8 @@
                     function (data) {
                         // Store data in cache and return
                         params.singleResult ?
-                            updateItem(name, data, params ? params.item : null) :
-                            store(name, data, params ? params.item : null);
+                            updateItem(name, data, params) :
+                            store(name, data, params);
                         if (filter) data = filter(data);
                         deferred.resolve(data);
 
@@ -217,25 +221,15 @@
 
             function removeDecorator(resource, params, successCallback) {
                 return function (item) {
-                    var nameId, name;
-                    if (params && params.party_id) nameId = '_' + params.party_id;
-                    else if (params && params.item && params && params.item.party_id) nameId = '_' + params.item.party_id;
-                    name = resource + nameId;
-
-                    removeItem(name, params.item);
+                    removeItem(resource, params);
                     if (successCallback) successCallback(item);
                 };
             };
 
             function updateDecorator(resource, params, successCallback) {
                 return function (item) {
-                    var nameId, name;
-                    if (params && params.party_id) nameId = '_' + params.party_id;
-                    else if (params && params.item && params && params.item.party_id) nameId = '_' + params.item.party_id;
-                    name = resource + nameId;
-
                     for (var key in cache) {
-                        if (key == name || key.startsWith(name + '_')) {
+                        if (key == resource || key.startsWith(resource + '_')) {
                             var data = cache[key].data;
                             if (angular.isArray(data)) {
                                 for (var i = 0; i < data.length; i++) {
@@ -254,14 +248,7 @@
             // OBSOLETE - WILL BE REMOVED ONCE CODE IS REFACTORED
             function addDecorator(resource, params, successCallback) {
                 return function (item) {
-                    var nameId, name;
-                    if (params && params.party_id) nameId = '_' + params.party_id;
-                    else if (params && params.item && params && params.item.party_id) nameId = '_' + params.item.party_id;
-                    name = resource + nameId;
-
-                    // Invalidate cache on add
-                    clear(name);
-
+                    clear(resource);
                     if (successCallback) successCallback(item);
                 };
             };

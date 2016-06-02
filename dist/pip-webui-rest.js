@@ -660,7 +660,10 @@
         ['pipEnums', 'pipDataCache', function (pipEnums, pipDataCache) {
 
             return {
-                readTips: readTips
+                readTips: readTips,
+                onTipCreate: onTipCreate,
+                onTipUpdate: onTipUpdate,
+                onTipDelete: onTipDelete                
             };
 
             function readTips(params, successCallback, errorCallback) {
@@ -670,6 +673,25 @@
 
                 return pipDataCache.retrieveOrLoad(params, successCallback, errorCallback);
             };
+            
+            function onTipCreate(params, successCallback) {
+                return pipDataCache.addDecorator(
+                    'tips', params,
+                    pipTagsCache.tagsUpdateDecorator(params, successCallback)
+                );
+            };
+
+            function onTipUpdate(params, successCallback) {
+                return pipDataCache.updateDecorator(
+                    'tips', params,
+                    pipTagsCache.tagsUpdateDecorator(params, successCallback)
+                );
+            };
+
+            function onTipDelete(params, successCallback) {
+                return pipDataCache.removeDecorator('tips', params, successCallback);
+            };
+                        
         }]
     );
 
@@ -2129,7 +2151,7 @@
                         userId: userId
                     }
                 );
-
+                pipTimer.start();
             };
 
             function close() {
@@ -3188,11 +3210,93 @@
         };
 
         // CRUD operations and other business methods
-        this.$get = ['pipRest', '$stateParams', 'pipDataModel', function (pipRest, $stateParams, pipDataModel) {
+        this.$get = ['pipRest', '$stateParams', 'pipDataModel', 'pipTipsCache', function (pipRest, $stateParams, pipDataModel, pipTipsCache) {
 
             return {
                 partyId: pipRest.partyId,
 
+                createQuoteCache: function (params, successCallback, errorCallback) {
+                    params.resource = 'quotes';
+                    params.item.party_id = pipRest.partyId($stateParams);
+                    
+                    pipDataModel.create(
+                        params,
+                        pipQuotesCache.onQuoteCreate(params, successCallback),
+                        errorCallback
+                    );
+                },
+
+// todo update after optimization rezolver
+                readTipsCache: function (params, transaction, successCallback, errorCallback) {
+                    params.resource = 'tips';
+
+                    params.item.search = $stateParams.search;
+                    params.item.tags = $stateParams.search;
+                    params.item.party_id = pipRest.partyId($stateParams);
+                    return pipTipsCache.readTips(params, successCallback, errorCallback);
+                },
+
+                createTipCache: function (params, successCallback, errorCallback) {
+                    params.resource = 'tips';
+                    params.item.party_id = pipRest.partyId($stateParams);
+                    
+                    pipDataModel.create(
+                        params,
+                        pipTipsCache.onTipCreate(params, successCallback),
+                        errorCallback
+                    );
+                },
+                
+                createTipWithFilesCache: function(params, successCallback, errorCallback) {
+                    params.skipTransactionEnd = true;
+                    params.item.party_id = pipRest.partyId($stateParams);
+                    pipDataModel.saveFiles(params, function() {
+                        params.resource = 'tips';
+                        params.skipTransactionBegin = true;
+                        params.skipTransactionEnd = false;
+                        
+                        params.item.party_id = pipRest.partyId($stateParams);
+                        pipDataModel.create(
+                            params,
+                            pipTipsCache.onTipCreate(params, successCallback),
+                            errorCallback
+                        );
+                    }, errorCallback);
+                },
+
+                updateTipCache: function (params, successCallback, errorCallback) {
+                    params.resource = 'tips';
+                    params.item.party_id = pipRest.partyId($stateParams);
+                    pipDataModel.update(
+                        params,
+                        pipTipsCache.onTipUpdate(params, successCallback),
+                        errorCallback
+                    );
+                },
+                
+                updateTipWithFilesCache: function(params, successCallback, errorCallback) {
+                    params.skipTransactionEnd = true;
+                    params.item.party_id = pipRest.partyId($stateParams);
+                    pipDataModel.saveFiles(params, function() {
+                        params.resource = 'tips';
+                        params.skipTransactionBegin = true;
+                        params.skipTransactionEnd = false;
+                        
+                        params.item.party_id = pipRest.partyId($stateParams);
+                        pipDataModel.update(
+                            params,
+                            pipTipsCache.onTipUpdate(params, successCallback),
+                            errorCallback
+                        );
+                    });
+                },
+
+                deleteTipCache: function(params, successCallback, errorCallback) {
+                    params.resource = 'tips';
+                    pipDataModel.remove(params, pipTipsCache.onTipDelete(params, successCallback), errorCallback);
+                },
+
+// todo delete after optimization resolver
                 readTips: function (params, transaction, successCallback, errorCallback) {
                     params.resource = 'tips';
 

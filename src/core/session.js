@@ -261,7 +261,7 @@
                         userId: userId
                     }
                 );
-
+                pipTimer.start();
             };
 
             function close() {

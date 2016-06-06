@@ -133,9 +133,11 @@
                             console.error("errors_maintenance", rejection);
                             break;
                         case -1:
-                            //$rootScope.$emit('pipNoConnectionError', {
-                            //    error: rejection
-                            //});
+                        
+                            if (!$rootScope.$user || !$rootScope.$party)
+                                $rootScope.$emit('pipNoConnectionError', {
+                                error: rejection
+                                });
 
                             console.error("errors_no_connection", rejection);
                             break;

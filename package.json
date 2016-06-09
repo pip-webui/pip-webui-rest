@@ -65,6 +65,7 @@
     "gulp-add-src": "*",
     "gulp-webserver": "*",
     "gulp-awspublish": "*",
-    "event-stream": "3.3.2"
+    "event-stream": "3.3.2",
+    "gulp-ngdocs": "*"
   }
 }

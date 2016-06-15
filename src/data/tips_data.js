@@ -46,8 +46,8 @@
 
                 createTip: function (params, successCallback, errorCallback) {
                     params.resource = 'tips';
+                    params.item = params.item || {};
                     params.item.party_id = pipRest.partyId($stateParams);
-                    
                     pipDataModel.create(
                         params,
                         pipTipsCache.onTipCreate(params, successCallback),
@@ -57,6 +57,7 @@
                 
                 createTipWithFiles: function(params, successCallback, errorCallback) {
                     params.skipTransactionEnd = true;
+                    params.item = params.item || {};
                     params.item.party_id = pipRest.partyId($stateParams);
                     pipDataModel.saveFiles(params, function() {
                         params.resource = 'tips';
@@ -74,6 +75,7 @@
 
                 updateTip: function (params, successCallback, errorCallback) {
                     params.resource = 'tips';
+                    params.item = params.item || {};
                     params.item.party_id = pipRest.partyId($stateParams);
                     pipDataModel.update(
                         params,
@@ -84,6 +86,7 @@
                 
                 updateTipWithFiles: function(params, successCallback, errorCallback) {
                     params.skipTransactionEnd = true;
+                    params.item = params.item || {};
                     params.item.party_id = pipRest.partyId($stateParams);
                     pipDataModel.saveFiles(params, function() {
                         params.resource = 'tips';

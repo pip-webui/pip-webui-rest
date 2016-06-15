@@ -11,7 +11,7 @@
     var thisModule = angular.module('pipTipsCache', ['pipTipsData']);
 
     thisModule.service('pipTipsCache',
-        function (pipEnums, pipDataCache) {
+        function (pipEnums, pipDataCache, pipTagsCache) {
 
             return {
                 readTips: readTips,

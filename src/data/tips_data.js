@@ -44,6 +44,14 @@
                     return pipTipsCache.readTips(params, successCallback, errorCallback);
                 },
 
+                readTip: function (params, successCallback, errorCallback) {
+                    params.resource = 'tips';
+                    params.item = params.item || {};
+                    params.item.party_id = pipRest.partyId($stateParams);
+                    params.item.id = params.item.id || $stateParams.id;
+                    return pipDataModel.readOne(params, pipTipsCache.onTipsUpdate(params, successCallback), errorCallback);
+                },
+
                 createTip: function (params, successCallback, errorCallback) {
                     params.resource = 'tips';
                     params.item = params.item || {};

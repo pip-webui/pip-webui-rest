@@ -35,7 +35,7 @@
                 partyId: pipRest.partyId,
 
 // todo update after optimization rezolver
-                readTips: function (params, transaction, successCallback, errorCallback) {
+                readTips: function (params, successCallback, errorCallback) {
                     params.resource = 'tips';
                     params.item = params.item || {};
                     params.item.search = $stateParams.search;

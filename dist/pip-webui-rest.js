@@ -1,1891 +1,4 @@
 /**
- * @file Global application data cache
- * @copyright Digital Living Software Corp. 2014-2016
- */
-
-/* global _, angular */
-
-(function () {
-    'use strict';
-
-    var thisModule = angular.module('pipDataCache', ['pipDataModel']);
-
-    thisModule.provider('pipDataCache', function () {
-        var
-            CACHE_TIMEOUT = 5 * 60000, // 5 mins or make it configurable
-            cache = {};
-
-        this.timeout = timeout;
-
-        this.$get = ['$q', 'pipDataModel', function ($q, pipDataModel) {
-            return {
-                timeout: timeout,
-
-                clear: clear,
-                retrieve: retrieve,
-                retrieveOrLoad: retrieveOrLoad,
-                store: store,
-                storePermanent: storePermanent,
-                remove: remove,
-                removeItem: removeItem,
-                removeDecorator: removeDecorator,
-
-                // OBSOLETE - will be removed
-                addDecorator: addDecorator,
-                updateDecorator: updateDecorator,
-            };
-            //-------------
-
-            // Converts a string value into a numeric hash code
-            function hash(data) {
-                var filteredData = {};
-
-                // Filter only the generic parameters that can be relevant to the query
-                if(data != null) {
-                    filteredData.item = data.item;
-                    filteredData.party_id = data.party_id;
-                    filteredData.search = data.search;
-                    filteredData.paging = data.paging;
-                    filteredData.take = data.take;
-                    filteredData.skip = data.skip;
-                }
-
-                filteredData = angular.toJson(filteredData);
-                var h = 0, i, chr, len;
-                if (filteredData == null || filteredData.length === 0) return h;
-                for (i = 0, len = filteredData.length; i < len; i++) {
-                    chr = filteredData.charCodeAt(i);
-                    h = ((h << 5) - h) + chr;
-                    h |= 0; // Convert to 32bit integer
-                }
-                return h;
-            };
-
-            // Generates parameterized key
-            function generateKey(name, params) {
-                var h = hash(params);
-                return name + (h != 0 ? '_' + h : '');
-            };
-
-            // Clear the cache, globally or selectively
-            function clear(name) {
-                if (name == null) {
-                    cache = {};
-                    console.log('****** Invalidated cache');
-                } else {
-                    for (var key in cache) {
-                        if (key == name || key.startsWith(name + '_')) {
-                            console.log('****** Invalidated cache ' + key);
-                            delete cache[key];
-                        }
-                    }
-                }
-            };
-
-            // Try to retrieve collection from the cache
-            function retrieve(name, params) {
-                if (name == null) throw new Error('name cannot be null');
-                if (name == '') throw new Error('name cannot be empty');
-
-                var key = generateKey(name, params);
-                var holder = cache[key];
-                if (holder == null) return null;
-
-                // If expired then cleanup and return null
-                if (holder.expire
-                    && _.now() - holder.expire > CACHE_TIMEOUT) {
-                    delete cache[key];
-                    return null;
-                }
-
-                return holder.data;
-            };
-
-            // Store collection into the cache
-            function store(name, data, params) {
-                if (name == null) throw new Error('name cannot be null');
-                if (name == '') throw new Error('name cannot be empty');
-
-                cache[generateKey(name, params)] = {
-                    expire: _.now(),
-                    data: data
-                };
-            };
-
-            // Store collection into the cache without expiration
-            function storePermanent(name, data, params) {
-                if (name == null) throw new Error('name cannot be null');
-                if (name == '') throw new Error('name cannot be empty');
-
-                cache[generateKey(name, params)] = {
-                    expire: null,
-                    data: data
-                };
-            };
-
-            // Remove collection from the cache
-            function remove(name, params) {
-                if (name == null) throw new Error('name cannot be null');
-                if (name == '') throw new Error('name cannot be empty');
-
-                delete cache[generateKey(name, params)];
-            };
-
-            function updateItem(name, item, params) {
-                if (name == null) throw new Error('name cannot be null');
-                if (item == null) return;
-
-                var data = retrieve(name, params);
-
-                if (data != null) {
-                    var isAdded = false;
-                    for (var i = 0; i < data.length; i++) {
-                        if (data[i].id == item.id) {
-                            data[i] = item;
-                            isAdded = true;
-                            return;
-                        }
-                    }
-                    if (!isAdded) data.push(item);
-                    store(name, data, params);
-                }
-            };
-
-            // Tries to retrieve collection from the cache, otherwise load it from server
-            function retrieveOrLoad(params, successCallback, errorCallback) {
-                if (params == null) throw new Error('params cannot be null');
-                // todo add check params?
-
-                var name = (params.cache || params.resource);
-
-                // Retrieve data from cache
-                var filter = params.filter,
-                    force = !!params.force,
-                    result = !force ? retrieve(name, params) : null,
-                    deferred = $q.defer();
-
-                // Return result if it exists
-                if (result) {
-                    console.log('***** Loaded from cache ' + name, result);
-                    if (filter) result = filter(result);
-                    if (successCallback) successCallback(result);
-                    deferred.resolve(result);
-                    return deferred.promise;
-                }
-
-                // Load data from server
-                pipDataModel[params.singleResult ? 'readOne' : 'read'](
-                    params,
-                    function (data) {
-                        // Store data in cache and return
-                        params.singleResult ?
-                            updateItem(name, data, params) :
-                            store(name, data, params);
-                        if (filter) data = filter(data);
-                        deferred.resolve(data);
-
-                        console.log('***** Loaded from server ' + name, data);
-
-                        if (successCallback) successCallback(data);
-                    },
-                    function (err) {
-                        // Return error
-                        console.log('***** FAILED to load from server ' + name);
-                        deferred.reject(err);
-                        if (errorCallback) errorCallback(err);
-                    }
-                );
-
-                // Return deferred object
-                return deferred.promise;
-            };
-
-            function removeItem(name, item) {
-                if (name == null) throw new Error('name cannot be null');
-                if (item == null) return;
-
-                for (var key in cache) {
-                    if (key == name || key.startsWith(name + '_')) {
-                        var data = cache[key].data;
-                        if (angular.isArray(data)) {
-                            for (var i = 0; i < data.length; i++) {
-                                if (data[i].id == item.id) {
-                                    data.splice(i, 1);
-                                    i--;
-                                }
-                            }
-                        }
-                    }
-                }
-            };
-
-            function removeDecorator(resource, params, successCallback) {
-                return function (item) {
-                    removeItem(resource, params);
-                    if (successCallback) successCallback(item);
-                };
-            };
-
-            function updateDecorator(resource, params, successCallback) {
-                return function (item) {
-                    for (var key in cache) {
-                        if (key == resource || key.startsWith(resource + '_')) {
-                            var data = cache[key].data;
-                            if (angular.isArray(data)) {
-                                for (var i = 0; i < data.length; i++) {
-                                    if (data[i].id == item.id) {
-                                        data[i] = item;
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    if (successCallback) successCallback(item);
-                };
-            };
-
-            // OBSOLETE - WILL BE REMOVED ONCE CODE IS REFACTORED
-            function addDecorator(resource, params, successCallback) {
-                return function (item) {
-                    if (!params || !params.notClearedCache) clear(resource);
-                    if (successCallback) successCallback(item);
-                };
-            };
-
-        }];
-        //-----------------------
-
-        function timeout(newTimeout) {
-            if (newTimeout) {
-                CACHE_TIMEOUT = newTimeout;
-            }
-            return CACHE_TIMEOUT;
-        };
-    });
-})();
-
-
-/**
- * @file Session data cache
- * @copyright Digital Living Software Corp. 2014-2016
- */
-
-/* global angular */
-
-(function () {
-    'use strict';
-
-    var thisModule = angular.module('pipSessionCache', ['pipCore', 'pipRest', 'pipDataCache']);
-
-    thisModule.run(['$rootScope', 'pipSessionCache', function ($rootScope, pipSessionCache) {
-        $rootScope.$on('pipSessionOpened', pipSessionCache.init);
-        $rootScope.$on('pipSessionClosed', pipSessionCache.clear);
-    }]);
-
-    thisModule.service('pipSessionCache',
-        ['$rootScope', '$stateParams', '$q', 'pipTranslate', 'pipRest', 'localStorageService', 'pipAccess', 'pipEnums', 'pipSession', 'pipDataCache', function ($rootScope, $stateParams, $q, pipTranslate, pipRest, localStorageService,
-                  pipAccess, pipEnums, pipSession, pipDataCache) {
-
-            return {
-                init: init,
-                clear: clear,
-
-                readUser: readUser,
-                readParty: readParty,
-                readConnection: readConnection,
-
-                readSettings: readSettings,
-                onSettingsUpdate: onSettingsUpdate
-            };
-            //-------------
-
-            function init(event, data) {
-                if (data == null)
-                    throw new Error('Unexpected error: issues in openning session');
-
-                clear();
-                if (data.serverUrl) $rootScope.$serverUrl = data.serverUrl;
-                storeUser(data.user, null);
-            };
-
-            function clear() {
-                // Clear data cache
-                pipDataCache.clear();
-
-                // Clear global variables
-                delete $rootScope.$user;
-                delete $rootScope.$party;
-                delete $rootScope.$serverUrl;
-                delete $rootScope.$connection;
-                delete $rootScope.$settings;
-            };
-
-            function updateUserRights(user, party) {
-                // Get parameters from cache if they are not defined
-                user = user || pipDataCache.retrieve('user');
-                party = party || pipDataCache.retrieve('party');
-
-                // Exit if user is not defined
-                if (user == null) return;
-
-                // Update user access rights
-                if (party == null)
-                    user = pipAccess.asOwner(user);
-                else if (user.id == party.id)
-                    user = pipAccess.asOwner(user);
-                else
-                    user = pipAccess.toParty(user, party);
-
-                // Save user with new rights back to cache
-                pipDataCache.storePermanent('user', user);
-                $rootScope.$user = user;
-            };
-
-            function storeUserTheme(user) {
-                if (!user) return;
-                var userTheme = user.theme || 'blue';
-
-                if (user && $rootScope.$party) {
-                    if ($rootScope.$party.id == user.id) userTheme = user.theme;
-                    else userTheme = 'navy';
-                }
-
-                $rootScope.$theme = userTheme;
-                localStorageService.set('theme', userTheme);
-            };
-
-            function storeUser(user) {
-                if (user == null) return;
-
-                pipDataCache.storePermanent('user', user);
-                $rootScope.$user = user;
-                storeUserTheme(user);
-
-                // Activate user language
-                pipTranslate.use(user.language, false, true);
-                updateUserRights(user, null);
-            };
-
-            function readUser(successCallback, errorCallback) {
-                // Avoid broken session
-                if (!pipSession.opened())
-                    throw new Error('User is not authenticated.');
-
-                var
-                    userId = pipSession.userId(),
-                    user = pipDataCache.retrieve('user');
-
-                // Return user from cache
-                if (user) {
-                    if (user.id != userId)
-                        throw new Error('Unexpected error: issues in opening session');
-
-                    if (successCallback) successCallback(user);
-                    var deferred = $q.defer();
-                    deferred.resolve(user);
-                    return deferred.promise;
-                }
-
-                // Read user from server
-                return pipRest.users().get(
-                    {id: userId},
-                    function (user) {
-                        // Double check
-                        if (user.id != userId)
-                            user == null;
-
-                        storeUser(user);
-
-                        if (successCallback) successCallback(use);
-                    },
-                    errorCallback
-                ).$promise;
-            };
-
-            function readParty(stateParams, successCallback, errorCallback) {
-                // Avoid broken session
-                if (!pipSession.opened())
-                    throw new Error('User is not authenticated.');
-
-                var
-                    userId = pipSession.userId(),
-                    partyId = stateParams.party_id || userId,
-                    party = pipDataCache.retrieve('party');
-
-                // Skip if party already retrieved
-                if (party && party.id == partyId) {
-                    $rootScope.$party = party;
-
-                    storeUserTheme($rootScope.$user);
-
-                    if (successCallback) successCallback(party);
-                    var deferred = $q.defer();
-                    deferred.resolve(party);
-                    return deferred.promise;
-                }
-
-                // Read party from server
-                return pipRest.parties().get(
-                    {id: partyId},
-                    function (party) {
-                        updateUserRights(null, party);
-                        pipDataCache.storePermanent('party', party);
-                        $rootScope.$party = party;
-
-                        storeUserTheme($rootScope.$user);
-
-                        if (successCallback) successCallback(party);
-                    },
-                    errorCallback
-                ).$promise;
-            };
-
-            function readConnection(stateParams, successCallback, errorCallback) {
-                // Avoid broken session
-                if (!pipSession.opened())
-                    throw new Error('User is not authenticated.');
-
-                var
-                    userId = pipSession.userId(),
-                    partyId = stateParams.party_id || userId,
-                    connection = pipDataCache.retrieve('connection');
-
-                // Clear connection it does not match user or party
-                if (connection
-                    && (connection.party_id != userId
-                    || connection.to_party_id != partyId)) {
-                    connection = null;
-                    pipDataCache.remove('connection');
-                    delete $rootScope.$connection;
-                }
-
-                // For owner connection is not defined
-                if (userId == partyId) {
-                    if (successCallback) successCallback(connection);
-                    var deferred = $q.defer();
-                    deferred.resolve(connection);
-                    return deferred.promise;
-                }
-
-                // Read connection from server
-                return pipRest.connections().query(
-                    {
-                        party_id: userId,
-                        to_party_id: partyId,
-                        accept: pipEnums.ACCEPTANCE.ACCEPTED
-                    },
-                    function (connections) {
-                        // There are shall not be more than one active connection
-                        if (connections && connections.length > 0)
-                            connection = connections[0];
-                        else connection = null;
-
-                        pipDataCache.storePermanent('connection', connection);
-                        $rootScope.$connection = connection;
-
-                        if (successCallback) successCallback(connection);
-                    },
-                    errorCallback
-                ).$promise;
-            };
-
-            function readSettings(successCallback, errorCallback) {
-                // Avoid broken session
-                if (!pipSession.opened())
-                    throw new Error('User is not authenticated.');
-                var
-                    userId = pipSession.userId(),
-                    settings = pipDataCache.retrieve('settings' + '_' + userId);
-
-                if (settings) {
-                    if (successCallback) successCallback(settings);
-                    var deferred = $q.defer();
-                    deferred.resolve(settings);
-                    return deferred.promise;
-                }
-
-                // Read settings from server
-                return pipRest.partySettings().get(
-                    {
-                        party_id: userId
-                    },
-                    function (settings) {
-                        settings = settings || {};
-                        pipDataCache.storePermanent('settings' + '_' + userId, settings);
-                        $rootScope.$settings = settings;
-
-                        if (successCallback) successCallback(settings);
-                    },
-                    errorCallback
-                ).$promise;
-            };
-
-            function onSettingsUpdate(item, successCallback) {
-                // return function(item) {
-                if (item == null) return;
-
-                var userId = pipSession.userId(),
-                    settings = pipDataCache.retrieve('settings' + '_' + userId);
-
-                // If tags are stored
-                if (settings) {
-                    settings = _.extend(settings, item);
-                    pipDataCache.storePermanent('settings' + '_' + userId, settings);
-                    $rootScope.$settings = settings;
-                }
-
-                if (successCallback) successCallback(item);
-            };
-        }]
-    );
-
-})();
-/**
- * @file Tags data cache
- * @copyright Digital Living Software Corp. 2014-2016
- */
-
-/* global angular */
-
-(function () {
-    'use strict';
-
-    var thisModule = angular.module('pipTagsCache', ['pipUtils', 'pipDataCache']);
-
-    thisModule.service('pipTagsCache',
-        ['pipTags', 'pipDataCache', function(pipTags, pipDataCache) {
-            return {
-                readTags: readTags,
-                // Todo: Add updateTags method
-                onTagsUpdate: onTagsUpdate,
-                tagsUpdateDecorator: tagsUpdateDecorator
-            };
-			//------------------------------
-
-            function tagsUpdate(params, item) {
-                // Extract tag from updated entity
-                var tags = item ? pipTags.extractTags(item) : [];
-                if (tags.length == 0) return;
-
-                var cacheName = 'partyTags';
-                if (params && params.party_id !== null && params.party_id !== undefined)
-                    cacheName = cacheName + '_' + params.party_id;
-                else if (params && params.item && params.item.party_id !== null && params.item.party_id !== undefined)
-                    cacheName = cacheName + '_' + params.item.party_id;
-
-                // Todo: this is a wrong way to get party_id (contributor) from entities
-                var data = pipDataCache.retrieve(cacheName);
-
-                // If tags are stored
-                if (data) {
-                    _.each(tags, function(tag) {
-                        // Find if tag already exists
-                        var t = _.find(data.tags, function(t) {
-                            return pipTags.equalTags(t.tag, tag);
-                        });
-
-                        // Otherwise add a new tag
-                        if (t) {
-                            t.tag = tag;
-                            t.count = t.count + 1;
-                            t.used = new Date();
-                        } else {
-                            if (!data.tags)
-                                data.tags = [];
-								
-                            data.tags.push({
-                                tag: tag,
-                                count: 1,
-                                used: new Date()
-                            });
-                        }
-                    });
-                    pipDataCache.store(cacheName, data);
-                }
-            };
-
-            function tagsUpdateDecorator(params, successCallback) {
-                return function(item) {
-                    tagsUpdate(params, item);
-
-                    if (successCallback) successCallback(item);
-                };
-            };
-
-			function readTags(params, successCallback, errorCallback) {
-				params.resource = 'partyTags';
-				params.singleResult = true;
-
-				return pipDataCache.retrieveOrLoad(params, successCallback, errorCallback);
-			};
-
-			// Todo: Add updateTags method
-
-			function onTagsUpdate(params, successCallback) {
-				return tagsUpdateDecorator(params, successCallback);
-			};
-        }]
-    );
-
-})();
-
-
-/**
- * @file Tips data cache
- * @copyright Digital Living Software Corp. 2014-2016
- */
-
-/* global angular */
-
-(function () {
-    'use strict';
-
-    var thisModule = angular.module('pipTipsCache', ['pipTipsData']);
-
-    thisModule.service('pipTipsCache',
-        ['pipEnums', 'pipDataCache', 'pipTagsCache', function (pipEnums, pipDataCache, pipTagsCache) {
-
-            return {
-                readTips: readTips,
-                onTipCreate: onTipCreate,
-                onTipUpdate: onTipUpdate,
-                onTipDelete: onTipDelete                
-            };
-
-            function readTips(params, successCallback, errorCallback) {
-                params = params || {};
-                params.resource = 'tips';
-                params.item = params.item || {};
-
-                return pipDataCache.retrieveOrLoad(params, successCallback, errorCallback);
-            };
-            
-            function onTipCreate(params, successCallback) {
-                return pipDataCache.addDecorator(
-                    'tips', params,
-                    pipTagsCache.tagsUpdateDecorator(params, successCallback)
-                );
-            };
-
-            function onTipUpdate(params, successCallback) {
-                return pipDataCache.updateDecorator(
-                    'tips', params,
-                    pipTagsCache.tagsUpdateDecorator(params, successCallback)
-                );
-            };
-
-            function onTipDelete(params, successCallback) {
-                return pipDataCache.removeDecorator('tips', params, successCallback);
-            };
-                        
-        }]
-    );
-
-})();
-
-
-/**
- * @file Announces data model
- * @copyright Digital Living Software Corp. 2014-2016
- */
- 
- /* global angular */
- 
-(function () {
-    'use strict';
-
-    var thisModule = angular.module('pipAnnouncesData', ['pipRest', 'pipDataModel']);
-
-    thisModule.provider('pipAnnouncesData', function () {
-
-        // Read all announces
-        this.readAnnouncesResolver = function () {
-            return /* @ngInject */ ['$stateParams', 'pipRest', 'pipEnums', function ($stateParams, pipRest, pipEnums) {
-                return pipRest.announces().query().$promise;
-            }];
-        };
-
-        this.readCompletedAnnouncesResolver = function () {
-            return /* @ngInject */ ['$stateParams', 'pipRest', 'pipEnums', function ($stateParams, pipRest, pipEnums) {
-                return pipRest.announces().query( {
-                        status: pipEnums.EXECUTION_STATUS.COMPLETED
-                    }
-                ).$promise;
-            }];
-        };
-
-        this.readAnnounceResolver = function () {
-            return /* @ngInject */ ['$stateParams', 'pipRest', function ($stateParams, pipRest) {
-                return pipRest.announces().get({
-                    id: $stateParams.id
-                }).$promise;
-            }];
-        };
-
-        // CRUD operations and other business methods
-        this.$get = ['pipRest', '$stateParams', 'pipDataModel', function (pipRest, $stateParams, pipDataModel) {
-            return {
-                partyId: pipRest.partyId,
-
-                updateAnnounce: function (params, successCallback, errorCallback) {
-                    params.resource = 'announces';
-                    params.skipTransactionBegin = true;
-                    params.skipTransactionEnd = false;
-                    pipDataModel.update(
-                        params,
-                        successCallback,
-                        errorCallback
-                    );
-                },
-                
-                updateAnnounceWithFiles: function(params, successCallback, errorCallback) {
-                    params.skipTransactionEnd = true;
-                    pipDataModel.saveFiles(params, function() {
-                        params.resource = 'announces';
-                        params.skipTransactionBegin = true;
-                        params.skipTransactionEnd = false;
-                        pipDataModel.update(
-                            params,
-                            successCallback,
-                            errorCallback
-                        );
-                    });
-                },
-
-                createAnnounceWithFiles: function(params, successCallback, errorCallback) {
-                    params.skipTransactionEnd = true;
-                    pipDataModel.saveFiles(params, function() {
-                        params.resource = 'announces';
-                        params.skipTransactionBegin = true;
-                        params.skipTransactionEnd = false;
-                        pipDataModel.create(
-                            params,
-                            successCallback,
-                            errorCallback
-                        );
-                    });
-                },
-                
-                createAnnounce: function (params, successCallback, errorCallback) {
-                    params.resource = 'announces';
-                    params.skipTransactionBegin = true;
-                    params.skipTransactionEnd = false;
-                    pipDataModel.create(
-                        params,
-                        successCallback,
-                        errorCallback
-                    );
-                },
-
-                deleteAnnounce: function(params, successCallback, errorCallback) {
-                    params.resource = 'announces';
-                    pipDataModel.remove(params, successCallback, errorCallback);
-                }
-            }
-        }];
-    });
-
-})();
-/**
- * @file Registration of all data modules
- * @copyright Digital Living Software Corp. 2014-2016
- */
-
-/* global angular */
-
-(function () {
-    'use strict';
-
-    angular.module('pipData', [
-		'pipDataModel',
-		'pipDataCache',
-        
-        'pipUsersData',
-        'pipSettingsData',
-        'pipSessionData',
-        'pipTagsData',
-
-        'pipAnnouncesData',
-        'pipFeedbacksData',
-        'pipGuidesData',
-        'pipImageSetsData',
-
-        'pipTipsCache',
-        'pipTipsData'
-    ]);
-    
-})();
-/**
- * @file Application abstract data model
- * @copyright Digital Living Software Corp. 2014-2016
- */
-
-/* global angular, _, async */
-
-(function () {
-    'use strict';
-
-    var thisModule = angular.module('pipDataModel', ['pipUtils', 'pipRest']);
-
-    thisModule.provider('pipDataModel', function() {
-        
-        this.$get = ['$stateParams', 'pipCollections', 'pipRest', function($stateParams, pipCollections, pipRest) {
-
-            var api = [];
-            
-            for (var call in pipRest) {
-                api[call] = pipRest[call];
-            }
-
-            // function extendApi(extension) {
-            //     for (var call in extension) {
-            //         api[call] = extension[call];
-            //     }
-            // }
-
-            // Execute request to REST API
-            function executeCurl(params, successCallback, errorCallback) {
-                var t = params.transaction, tid;
-
-                if (t && !params.skipTransactionBegin) {
-                    tid = params.transactionId = t.begin(
-                        params.transactionOperation || 'PROCESSING'
-                    );
-                    if (!tid) return;
-                }
-
-                return api[params.resource]()[params.operation](
-                    params.item,
-                    function (result) {
-                        if (t && tid && t.aborted(tid)) return;
-                        if (t && !params.skipTransactionEnd) t.end();
-                        if (successCallback) successCallback(result);
-                    },
-                    function (error) {
-                        if (t) t.end(error);
-                        if (errorCallback) errorCallback(error);
-                    }
-                );
-            };
-
-            // Create an object and add it to object collection
-            function createCurl(params, successCallback, errorCallback) {
-                params.transactionOperation = params.transactionOperation || 'SAVING';
-                params.operation = params.operation || 'save';
-                
-                return executeCurl(
-                    params,
-                    function(result) {
-                        if (params.itemCollection)
-                            params.itemCollection.push(result);
-
-                        if (successCallback) successCallback(result);
-                    },
-                    function(error){
-                        if (errorCallback) errorCallback(error);
-                    }
-                );
-            };
-
-            // Update an object and replace it in object collection
-            function updateCurl(params, successCallback, errorCallback) {
-                params.transactionOperation = params.transactionOperation || 'SAVING';
-                params.operation = params.operation || 'update';
-
-                return  executeCurl(
-                    params,
-                    function(result) {
-                        if (params.itemCollection)
-                            pipCollections.replaceBy(params.itemCollection, 'id', result.id, result);
-
-                        if (successCallback) successCallback(result);
-                    },
-                    errorCallback
-                );
-            };
-
-            // Update an object and remove it from object collection
-            function deleteCurl(params, successCallback, errorCallback) {
-                params.transactionOperation = params.transactionOperation || 'SAVING';
-                params.operation = params.operation || 'remove';
-
-                return executeCurl(
-                    params,
-                    function(result) {
-                        if (params.itemCollection)
-                            _.remove(params.itemCollection, {id: result.id || (params.object || {}).id || (params.item || {}).id});
-
-                        if (successCallback) successCallback(result);
-                    },
-                    errorCallback
-                );
-            };
-
-            // Read a collection of objects
-            function readCurl(params, successCallback, errorCallback) {
-                params.transactionOperation = params.transactionOperation || 'READING';
-                params.operation = params.operation || 'query';
-
-                return executeCurl(
-                    params,
-                    function(result) {
-                        if (successCallback) successCallback(result);
-                    },
-                    errorCallback
-                );
-            };
-
-            // Read a single object and add it into collection
-            function readOneCurl(params, successCallback, errorCallback) {
-                params.transactionOperation = params.transactionOperation || 'READING';
-                params.operation = params.operation || 'page';
-
-                return executeCurl(
-                    params,
-                    function(result) {
-                        if (params.itemCollection && result) {
-                            var index = _.findIndex(params.itemCollection, {id: result.id});
-                            if (index >= 0) params.itemCollection[index] = result;
-                            else params.itemCollection.push(result);
-                        }
-
-                        if (successCallback) successCallback(result);
-                    },
-                    errorCallback
-                );
-            };
-
-            // Read a page and add results into object collection
-            function pageCurl(params, successCallback, errorCallback) {
-                params.transactionOperation = params.transactionOperation || 'READING';
-                params.operation = params.operation || 'page';
-
-                return executeCurl(
-                    params,
-                    function(result) {
-                        if (params.itemCollection && result.data) {
-                            for (var i = 0; i < result.data.length; i++)
-                                params.itemCollection.push(result.data[i]);
-                        }
-
-                        if (successCallback) successCallback(result);
-                    },
-                    errorCallback
-                );
-            };
-
-            // Save picture and document files
-            function saveFilesCurl(params, successCallback, errorCallback) {
-                var t = params.transaction, tid;
-
-                // Start transaction if necessary
-                if (t && !params.skipTransactionBegin) {
-                    tid = params.transactionId = t.begin(
-                        params.transactionOperation || 'SAVING'
-                    );
-                    if (!tid) return;
-                }
-
-//------------------
-
-                var uploadFiles = [{
-                    pictures: params.pictures,
-                    documents: params.documents
-                }];
-
-                // from content
-                if (params.item && params.item.content ) {
-                    var saveResult = true;
-                    async.eachSeries(_.union(params.item.content, uploadFiles),
-                        function (obj, callback) {
-                            // не выбран - пропускаем этот item  || нет этого события action
-                            if ( !obj.pictures && !obj.documents ) {
-                                callback();
-                            } else {
-                                if (obj.pictures) {
-                                    // Save pictures first
-                                    obj.pictures.save(
-                                        function () {
-                                            if (t && tid && t.aborted(tid)) {
-                                                saveResult =  false;
-                                                callback('aborted');
-                                            }
-                                            // Save documents second
-                                            if (obj.documents) {
-                                                obj.documents.save(
-                                                    function () {
-                                                        if (t && tid && t.aborted(tid)) {
-                                                            saveResult =  false;
-                                                            callback('aborted');
-                                                        }
-                                                        callback();
-                                                    },
-                                                    function (error) {
-                                                        saveResult =  false;
-                                                        callback(error);
-                                                    }
-                                                );
-                                            } else {
-                                                callback();
-                                            }
-                                        },
-                                        function (error) {
-                                            saveResult =  false;
-                                            callback(error);
-                                        }
-                                    );
-                                } else {
-                                    if (obj.documents) {
-                                        // Save documents first
-                                        obj.documents.save(
-                                            function () {
-                                                if (t && tid && t.aborted(tid)) {
-                                                    saveResult = false;
-                                                    callback('aborted');
-                                                }
-                                                callback();
-                                            },
-                                            function (error) {
-                                                saveResult = false;
-                                                callback(error);
-                                            }
-                                        );
-                                    }
-                                }
-                            }
-                        },
-                        function (error) {
-                            if (!error && saveResult) {
-                                // удаляем ненужные объекты перед сохранением
-                                // вызываем колбек
-                                if (t & !params.skipTransactionEnd) t.end();
-                                _.each(params.item.content, function(item){
-                                    delete item.pictures;
-                                    delete item.documents;
-                                });
-                                if (successCallback) successCallback();
-                            } else {
-                                // вызываем ошибочный колбек
-                                if (t) t.end(error);
-                                if (errorCallback) {
-                                    errorCallback(error);
-                                }
-                            }
-                        }
-                    );
-                } else {
-                    if (params.pictures) {
-                        // Save pictures first
-                        params.pictures.save(
-                            function () {
-                                if (t && tid && t.aborted(tid)) return;
-
-                                // Save documents second
-                                if (params.documents) {
-                                    params.documents.save(
-                                        function () {
-                                            if (t && tid && t.aborted(tid)) return;
-                                            // Do everything else
-                                            if (t & !params.skipTransactionEnd) t.end();
-                                            if (successCallback) successCallback();
-                                        },
-                                        function (error) {
-                                            if (t) t.end(error);
-                                            if (errorCallback) errorCallback(error);
-                                        }
-                                    );
-                                } else {
-                                    // Do everything else
-                                    if (t & !params.skipTransactionEnd) t.end();
-                                    if (successCallback) successCallback();
-                                }
-                            },
-                            function (error) {
-                                if (t) t.end(error);
-                                if (errorCallback) errorCallback(error);
-                            }
-                        );
-                    } else if (params.documents) {
-                        // Save documents first
-                        params.documents.save(
-                            function () {
-                                if (t && tid && t.aborted(tid)) return;
-                                // Do everything else
-                                if (t & !params.skipTransactionEnd) t.end();
-                                if (successCallback) successCallback();
-                            },
-                            function (error) {
-                                if (t) t.end(error);
-                                if (errorCallback) errorCallback(error);
-                            }
-                        );
-                    } else {
-                        // Do everything else
-                        if (t & !params.skipTransactionEnd) t.end();
-                        if (successCallback) successCallback();
-                    }
-                }
-            };
-
-            // Abort transaction with file upload
-            function abortFilesCurl(params) {
-                if (params.pictures) 
-                    params.pictures.abort();
-                if (params.documents)
-                    params.documents.abort();
-                    if (params.transaction)
-                    params.transaction.abort();  
-            };
-
-            return {
-                // extendApi: extendApi,
-
-                // Executing transactional requests to server
-                execute: executeCurl,
-
-                // Creating an object
-                create: createCurl,
-
-                // Updating an object
-                update: updateCurl,
-                save: updateCurl,
-
-                // Deleting an object
-                'delete': deleteCurl,
-                remove: deleteCurl,
-
-                // Reading objects
-                read: readCurl,
-                query: readCurl,
-
-                // Reading a single object
-                readOne: readOneCurl,
-                get: readOneCurl,
-
-                // Reading paginated results
-                page: pageCurl,
-                readPage: pageCurl,
-                queryPage: pageCurl,
-
-                // Saving files to file store
-                saveFiles: saveFilesCurl,
-                abortFiles: abortFilesCurl
-            }
-        }];
-    });
-
-})();
-
-/**
- * @file Feedbacks data model
- * @copyright Digital Living Software Corp. 2014-2016
- */
- 
-/* global angular */
-
-(function () {
-    'use strict';
-
-    var thisModule = angular.module('pipFeedbacksData', ['pipRest', 'pipDataModel']);
-
-    thisModule.provider('pipFeedbacksData', function() {
-
-        this.readFeedbacksResolver = function () {
-            return /* @ngInject */ ['$stateParams', 'pipRest', function ($stateParams, pipRest) {
-                return pipRest.feedbacks().query().$promise;
-            }];
-        };
-
-        this.readFeedbackResolver = function () {
-            return /* @ngInject */ ['$stateParams', 'pipRest', function ($stateParams, pipRest) {
-                return pipRest.feedbacks().get({
-                    id: $stateParams.id
-                }).$promise;
-            }];
-        };
-
-        this.$get = ['$stateParams', 'pipRest', 'pipDataModel', function($stateParams, pipRest, pipDataModel) {
-            return {
-
-                sendFeedback: function(params, successCallback, errorCallback) {
-                    params.resource = 'feedbacks';
-                    pipDataModel.create(params, successCallback, errorCallback);
-                },
-
-                createFeedbackWithFiles: function(params, successCallback, errorCallback) {
-                    params.skipTransactionEnd = true;
-                    pipDataModel.saveFiles(params, function() {
-                        params.resource = 'feedbacks';
-                        params.skipTransactionBegin = true;
-                        params.skipTransactionEnd = false;
-                        pipDataModel.create(params, successCallback, errorCallback);
-                    });
-                },
-
-                updateFeedback: function (params, successCallback, errorCallback) {
-                    params.resource = 'feedbacks';
-                    params.skipTransactionBegin = true;
-                    params.skipTransactionEnd = false;
-                    pipDataModel.update(
-                        params,
-                        successCallback,
-                        errorCallback
-                    );
-                },
-
-                deleteFeedback: function(params, successCallback, errorCallback) {
-                    params.resource = 'feedbacks';
-                    pipDataModel.remove(params, successCallback, errorCallback);
-                }
-            };
-        }];
-    });
-
-})();
-
-/**
- * @file Guides data model
- * @copyright Digital Living Software Corp. 2014-2016
- */
- 
- /* global angular */
- 
-(function () {
-    'use strict';
-
-    var thisModule = angular.module('pipGuidesData', ['pipRest', 'pipDataModel']);
-
-    thisModule.provider('pipGuidesData', function () {
-        var PAGE_SIZE = 5;
-
-        // Read all guides
-        this.readGuidesResolver = function () {
-            return /* @ngInject */ ['$stateParams', 'pipRest', function ($stateParams, pipRest) {
-                return pipRest.guides().query().$promise;
-            }];
-        };
-        
-        this.readIntroGuidesResolver = function () {
-            return /* @ngInject */ ['$stateParams', 'pipRest', function ($stateParams, pipRest) {
-                return pipRest.guides().query({
-                        type: 'intro',
-                        status : 'completed'
-                }).$promise;
-            }];
-        };
-
-        this.readGuideResolver = function () {
-            return /* @ngInject */ ['$stateParams', 'pipRest', function ($stateParams, pipRest) {
-                return pipRest.guides().get({
-                    id: $stateParams.id || '55bf23d3bb22aa175c3e498e'
-                }).$promise;
-            }];
-        };
-
-        // CRUD operations and other business methods
-        this.$get = ['pipRest', '$stateParams', 'pipDataModel', function (pipRest, $stateParams, pipDataModel) {
-            return {
-                partyId: pipRest.partyId,
-
-                updateGuide: function (params, successCallback, errorCallback) {
-                    params.resource = 'guides';
-                    params.skipTransactionBegin = true;
-                    params.skipTransactionEnd = false;
-                    pipDataModel.update(
-                        params,
-                        successCallback,
-                        errorCallback
-                    );
-                },
-
-                readGuides: function(params, successCallback, errorCallback) {
-                    params.resource = 'guides';
-                    params.party_id = pipRest.partyId($stateParams);
-                    params.type = 'intro';
-                    return pipDataModel.read(params, successCallback, errorCallback);
-                },
-
-                createGuideWithFiles: function(params, successCallback, errorCallback) {
-                    params.skipTransactionEnd = true;
-                    pipDataModel.saveFiles(params, function() {
-                        params.resource = 'guides';
-                        params.skipTransactionBegin = true;
-                        params.skipTransactionEnd = false;
-                        pipDataModel.create(
-                            params,
-                            successCallback,
-                            errorCallback
-                        );
-                    });
-                },
-                
-                updateGuideWithFiles: function(params, successCallback, errorCallback) {
-                    params.skipTransactionEnd = true;
-                    pipDataModel.saveFiles(params, function() {
-                        params.resource = 'guides';
-                        params.skipTransactionBegin = true;
-                        params.skipTransactionEnd = false;
-                        pipDataModel.update(
-                            params,
-                            successCallback,
-                            errorCallback
-                        );
-                    });
-                },
-
-                createGuide: function (params, successCallback, errorCallback) {
-                    params.resource = 'guides';
-                    params.skipTransactionBegin = true;
-                    params.skipTransactionEnd = false;
-                    pipDataModel.create(
-                        params,
-                        successCallback,
-                        errorCallback
-                    );
-                },
-                
-                deleteGuide: function(params, successCallback, errorCallback) {
-                    params.resource = 'guides';
-                    pipDataModel.remove(params, successCallback, errorCallback);
-                }
-
-            }
-        }];
-    });
-
-})();
-/**
- * @file Image sets data model
- * @copyright Digital Living Software Corp. 2014-2016
- */
- 
- /* global angular */
- 
-(function () {
-    'use strict';
-    
-    var thisModule = angular.module('pipImageSetsData', ['pipRest', 'pipDataModel']);
-
-    thisModule.provider('pipImageSetsData', function () {
-        var PAGE_SIZE = 15;
-
-        // Read all image sets
-        this.readImageSetsResolver = function () {
-            return /* @ngInject */ ['$stateParams', 'pipRest', function ($stateParams, pipRest) {
-                return pipRest.image_sets().get({
-                    paging: 1,
-                    skip: 0,
-                    take: PAGE_SIZE,
-                    search: $stateParams.search,
-                    //tags: $stateParams.search
-                }).$promise;
-            }];
-        };
-
-        this.readImageSetResolver = function () {
-            return /* @ngInject */ ['$stateParams', 'pipRest', function ($stateParams, pipRest) {
-                return pipRest.image_sets().get({
-                    id: $stateParams.id
-                }).$promise;
-            }];
-        };
-
-        // CRUD operations and other business methods
-        this.$get = ['pipRest', '$stateParams', 'pipDataModel', function (pipRest, $stateParams, pipDataModel) {
-
-            return {
-                partyId: pipRest.partyId,
-
-                readImageSets: function (params, transaction, successCallback, errorCallback) {
-                    params.resource = 'image_sets';
-
-                    params.skipTransactionBegin = true;
-                    params.skipTransactionEnd = false;
-                    params.item.search = $stateParams.search || params.item.search;
-                   // params.item.tags = $stateParams.search || params.item.search;
-
-                    params.item.party_id = pipRest.partyId($stateParams);
-                    params.item.take = PAGE_SIZE;
-                    params.item.paging = 1;
-
-                    pipDataModel.page(
-                        params,
-                        successCallback,
-                        errorCallback
-                    );
-                },
-
-                updateImageSet: function (params, successCallback, errorCallback) {
-                    params.resource = 'image_sets';
-                    params.skipTransactionBegin = true;
-                    params.skipTransactionEnd = false;
-                    pipDataModel.update(
-                        params,
-                        successCallback,
-                        errorCallback
-                    );
-                },
-
-                createImageSet: function (params, successCallback, errorCallback) {
-                    params.resource = 'image_sets';
-                    params.skipTransactionBegin = true;
-                    params.skipTransactionEnd = false;
-                    pipDataModel.create(
-                        params,
-                        successCallback,
-                        errorCallback
-                    );
-                },
-
-                createImageSetWithFiles: function(params, successCallback, errorCallback) {
-                    params.skipTransactionEnd = true;
-                    pipDataModel.saveFiles(params, function() {
-                        params.resource = 'image_sets';
-                        params.skipTransactionBegin = true;
-                        params.skipTransactionEnd = false;
-                        pipDataModel.create(
-                            params,
-                            successCallback,
-                            errorCallback
-                        );
-                    });
-                },
-
-                updateImageSetWithFiles: function(params, successCallback, errorCallback) {
-                    params.skipTransactionEnd = true;
-                    pipDataModel.saveFiles(params, function() {
-                        params.resource = 'image_sets';
-                        params.skipTransactionBegin = true;
-                        params.skipTransactionEnd = false;
-                        pipDataModel.update(
-                            params,
-                            successCallback,
-                            errorCallback
-                        );
-                    });
-                },
-
-                deleteImageSet: function(params, successCallback, errorCallback) {
-                    params.resource = 'image_sets';
-                    pipDataModel.remove(params, successCallback, errorCallback);
-                }
-            }
-        }];
-    });
-
-})();
-
-/**
- * @file Session data model
- * @copyright Digital Living Software Corp. 2014-2016
- */
-
-/* global _, angular */
-
-(function () {
-    'use strict';
-
-    var thisModule = angular.module('pipSessionData', ['pipRest', 'pipSessionCache']);
-
-    thisModule.provider('pipSessionData', function() {
-
-        readUserResolver.$inject = ['pipSessionCache'];
-        readPartyResolver.$inject = ['pipSessionCache', '$stateParams'];
-        readConnectionResolver.$inject = ['pipSessionCache', '$stateParams'];
-        readSettingsResolver.$inject = ['pipSessionCache'];
-        readSessionsUserResolver.$inject = ['$stateParams', 'pipRest', '$rootScope'];
-        readSessionIdResolver.$inject = ['$stateParams', 'pipSession'];
-        this.readUserResolver = /* @ngInject */ readUserResolver;
-        this.readPartyResolver = /* @ngInject */ readPartyResolver;
-        this.readConnectionResolver = /* @ngInject */ readConnectionResolver;
-        this.readSettingsResolver = /* @ngInject */ readSettingsResolver;
-
-        this.readSessionsUserResolver = /* @ngInject */ readSessionsUserResolver;
-        this.readSessionIdResolver = /* @ngInject */ readSessionIdResolver;
-
-        this.$get = ['$rootScope', '$stateParams', 'pipRest', function($rootScope, $stateParams, pipRest) {
-            return {
-                getSessionId: getSessionId,
-                removeSession: removeSession
-            };
-
-            function getSessionId(pipSession){
-                return function () {
-                    return pipSession.sessionId();
-                };
-            };
-
-            function removeSession(transaction, session, successCallback, errorCallback) {
-                var tid = transaction.begin('REMOVING');
-                if (!tid) return;
-
-                pipRest.userSessions().remove(
-                    {
-                        id: session.id,
-                        party_id: $stateParams.id
-                    },
-                    function (removedSession) {
-                        if (transaction.aborted(tid)) return;
-                        else transaction.end();
-
-                        if (successCallback) successCallback(removedSession);
-                    },
-                    function (error) {
-                        transaction.end(error);
-                        if (errorCallback) errorCallback(error);
-                    }
-                );
-            };
-            
-        }];
-        //--------------
-
-        function readUserResolver(pipSessionCache) {
-            return pipSessionCache.readUser();                             
-        };
-
-        function readPartyResolver(pipSessionCache, $stateParams) {
-            return pipSessionCache.readParty($stateParams);
-        };
-
-        function readConnectionResolver(pipSessionCache, $stateParams) {
-            return pipSessionCache.readConnection($stateParams);
-        };
-
-        function readSettingsResolver(pipSessionCache) {
-            return pipSessionCache.readSettings();                             
-        };
-
-        function readSessionsUserResolver($stateParams, pipRest, $rootScope) {
-            return pipRest.userSessions().query({
-                party_id: $stateParams.id
-            }).$promise;
-        };
-
-        function readSessionIdResolver($stateParams, pipSession) {
-            return pipSession.sessionId();
-        };
-        
-    });
-
-})();
-
-/**
- * @file Settings data model
- * @copyright Digital Living Software Corp. 2014-2016
- * @todo Rewrite, use cached settings, remove unrelated methods
- */
-
-/* global _, angular */
-
-(function () {
-    'use strict';
-
-    var thisModule = angular.module('pipSettingsData', ['pipRest', 'pipSessionData', 'pipSessionCache', 'pipDataModel']);
-
-    thisModule.provider('pipSettingsData', ['pipSessionDataProvider', function (pipSessionDataProvider) {
-
-        this.readSettingsResolver = pipSessionDataProvider.readSettingsResolver;
-
-        this.$get = ['$rootScope', '$stateParams', 'pipRest', 'pipSessionCache', 'pipSession', 'pipDataModel', function ($rootScope, $stateParams, pipRest, pipSessionCache, pipSession, pipDataModel) {
-            return {
-                // Saving generic settings
-                saveSettings: saveSettings,
-                readSettings: readSettings,
-                reReadSettings: reReadSettings
-
-            };
-
-            function readSettings(successCallback, errorCallback) {
-                return pipSessionCache.readSettings(successCallback, errorCallback)
-            };
-
-            // force read settings from server and update cache
-            function reReadSettings(successCallback, errorCallback) {
-                return pipRest.partySettings().get(
-                    {
-                        party_id: pipSession.userId()
-                    },
-                    function (settings) {
-                        settings = settings || {};
-                        pipSessionCache.onSettingsUpdate(settings);
-                        if (successCallback) successCallback(settings);
-                    },
-                    errorCallback
-                ).$promise;
-            };
-
-            function saveSettings(settings, keys, successCallback, errorCallback) {
-                // Extract specific keys
-                settings = keys ? _.pick(settings, keys) : settings;
-                settings.party_id = pipSession.userId();
-                var oldSettings = _.cloneDeep($rootScope.$settings);
-                pipSessionCache.onSettingsUpdate(settings);
-
-                var params = {};
-                params.resource = 'partySettings';
-                params.item = settings;
-                params.item.creator_id = pipSession.userId();
-
-                pipDataModel.create(
-                    params,
-                    successCallback,
-                    function (error) {
-                        pipSessionCache.onSettingsUpdate(oldSettings);
-
-                        if (errorCallback) errorCallback(error);
-                    }
-                );
-            };
-        }];
-    }]);
-
-})();
-
-/**
- * @file Tags data model
- * @copyright Digital Living Software Corp. 2014-2016
- */
-
-/* global angular */
-
-(function () {
-    'use strict';
-
-    var thisModule = angular.module('pipTagsData', ['pipRest' , 'pipDataModel', 'pipTagsCache']);
-
-    thisModule.provider('pipTagsData', function() {
-        
-        this.readTagsResolver = function() {
-            return /* @ngInject */ ['$stateParams', 'pipRest', 'pipTagsCache', function($stateParams, pipRest, pipTagsCache) {
-                return pipTagsCache.readTags({
-                    item: { party_id: pipRest.partyId($stateParams) }
-                });
-            }];
-        };
-
-        this.$get = ['$stateParams', '$state', 'pipRest', 'pipDataModel', 'pipTagsCache', function($stateParams, $state, pipRest, pipDataModel, pipTagsCache) {
-            return {
-                partyId: pipRest.partyId,
-                
-                readTags: function(params, successCallback, errorCallback) {
-                    params = params || {};
-                    params.item = params.item || {};
-                    if(params.item.party_id == null) {
-                        params.item.party_id = pipRest.partyId($stateParams);
-                    }
-                    return pipTagsCache.readTags(params, successCallback, errorCallback);
-                }
-            }
-        }];
-    });
-
-})();
-
-/**
- * @file Tips data model
- * @copyright Digital Living Software Corp. 2014-2016
- */
-
-/* global angular */
-
-(function () {
-    'use strict';
-
-    var thisModule = angular.module('pipTipsData', ['pipRest', 'pipDataModel']);
-
-    thisModule.provider('pipTipsData', function () {
-        var PAGE_SIZE = 100;
-
-        // Read all tips
-        this.readTipsResolver = function () {
-            return /* @ngInject */ ['$stateParams', 'pipRest', function ($stateParams, pipRest) {
-                return pipRest.tips().query().$promise;
-            }];
-        };
-
-        this.readTipResolver = function () {
-            return /* @ngInject */ ['$stateParams', 'pipRest', function ($stateParams, pipRest) {
-                return pipRest.tips().get({
-                    id: $stateParams.id
-                }).$promise;
-            }];
-        };
-
-        // CRUD operations and other business methods
-        this.$get = ['pipRest', '$stateParams', 'pipDataModel', 'pipTipsCache', function (pipRest, $stateParams, pipDataModel, pipTipsCache) {
-
-            return {
-                partyId: pipRest.partyId,
-
-// todo update after optimization rezolver
-                readTips: function (params, successCallback, errorCallback) {
-                    params.resource = 'tips';
-                    params.item = params.item || {};
-                    params.item.search = $stateParams.search;
-                    params.item.tags = $stateParams.search;
-                    params.item.party_id = pipRest.partyId($stateParams);
-                    return pipTipsCache.readTips(params, successCallback, errorCallback);
-                },
-
-                createTip: function (params, successCallback, errorCallback) {
-                    params.resource = 'tips';
-                    params.item = params.item || {};
-                    params.item.party_id = pipRest.partyId($stateParams);
-                    pipDataModel.create(
-                        params,
-                        pipTipsCache.onTipCreate(params, successCallback),
-                        errorCallback
-                    );
-                },
-                
-                createTipWithFiles: function(params, successCallback, errorCallback) {
-                    params.skipTransactionEnd = true;
-                    params.item = params.item || {};
-                    params.item.party_id = pipRest.partyId($stateParams);
-                    pipDataModel.saveFiles(params, function() {
-                        params.resource = 'tips';
-                        params.skipTransactionBegin = true;
-                        params.skipTransactionEnd = false;
-                        
-                        params.item.party_id = pipRest.partyId($stateParams);
-                        pipDataModel.create(
-                            params,
-                            pipTipsCache.onTipCreate(params, successCallback),
-                            errorCallback
-                        );
-                    }, errorCallback);
-                },
-
-                updateTip: function (params, successCallback, errorCallback) {
-                    params.resource = 'tips';
-                    params.item = params.item || {};
-                    params.item.party_id = pipRest.partyId($stateParams);
-                    pipDataModel.update(
-                        params,
-                        pipTipsCache.onTipUpdate(params, successCallback),
-                        errorCallback
-                    );
-                },
-                
-                updateTipWithFiles: function(params, successCallback, errorCallback) {
-                    params.skipTransactionEnd = true;
-                    params.item = params.item || {};
-                    params.item.party_id = pipRest.partyId($stateParams);
-                    pipDataModel.saveFiles(params, function() {
-                        params.resource = 'tips';
-                        params.skipTransactionBegin = true;
-                        params.skipTransactionEnd = false;
-                        
-                        params.item.party_id = pipRest.partyId($stateParams);
-                        pipDataModel.update(
-                            params,
-                            pipTipsCache.onTipUpdate(params, successCallback),
-                            errorCallback
-                        );
-                    });
-                },
-
-                deleteTip: function(params, successCallback, errorCallback) {
-                    params.resource = 'tips';
-                    pipDataModel.remove(params, pipTipsCache.onTipDelete(params, successCallback), errorCallback);
-                }
-            }
-        }];
-    });
-
-})();
-
-/**
- * @file Users data model
- * @copyright Digital Living Software Corp. 2014-2016
- */
-
-/* global angular */
-
-(function () {
-    'use strict';
-
-    var thisModule = angular.module('pipUsersData', ['pipRest']);
-
-    thisModule.provider('pipUsersData', function () {
-
-        this.readUsersResolver = function () {
-            return /* @ngInject */ ['$stateParams', 'pipRest', function ($stateParams, pipRest) {
-                return pipRest.users().page({
-                    party_id: $stateParams.id,
-                    paging: $stateParams.paging || 1,
-                    skip: $stateParams.skip || 0,
-                    take: $stateParams.take || 15
-                }).$promise;
-            }];
-        };
-
-        this.readUserResolver = function () {
-            return /* @ngInject */ ['$stateParams', 'pipRest', function ($stateParams, pipRest) {
-                return pipRest.users().get({
-                    id: $stateParams.id,
-                    party_id: pipRest.partyId($stateParams)
-                }).$promise;
-
-            }];
-        };
-
-        this.readActivitiesUserResolver = /* @ngInject */
-            ['$stateParams', 'pipRest', '$rootScope', function ($stateParams, pipRest, $rootScope) {
-                return pipRest.partyActivities().page({
-                    party_id: $rootScope.$user.id,
-                    paging: 1,
-                    skip: 0,
-                    take: 25
-                }).$promise;
-            }];
-
-        // CRUD operations and other business methods
-        this.$get = ['pipRest', '$stateParams', function (pipRest, $stateParams) {   
-            return {
-                partyId: pipRest.partyId,
-
-                readUsers: function (params, transaction, successCallback, errorCallback) {
-                    pipRest.users().page(
-                        {
-                            party_id: pipRest.partyId($stateParams),
-                            paging: 1,
-                            skip: params.start,
-                            search: params.item.search ,
-                            active: params.item.active,
-                            paid: params.item.paid,
-                            admin: params.item.admin,
-                            take: 15
-                        },
-                        function (pagedUsers) {
-                            if (successCallback) successCallback(pagedUsers);
-                        },
-                        function (error) {
-                            errorCallback(error);
-                        }
-                    );
-                },
-                
-                updateUser: function (item, transaction, successCallback, errorCallback) {
-                    pipRest.users().update(
-                        item.item,
-                        function (updatedItem) {
-                            if (successCallback) successCallback(updatedItem);
-                        },
-                        function (error) {
-                            errorCallback(error);
-                        }
-                    );
-                }
-
-            }
-        }];
-    });
-
-})();
-/**
  * @file User access permissions service
  * @copyright Digital Living Software Corp. 2014-2016
  */
@@ -3368,6 +1481,1965 @@
             };
         }]
     );
+
+})();
+/**
+ * @file Global application data cache
+ * @copyright Digital Living Software Corp. 2014-2016
+ */
+
+/* global _, angular */
+
+(function () {
+    'use strict';
+
+    var thisModule = angular.module('pipDataCache', ['pipDataModel']);
+
+    thisModule.provider('pipDataCache', function () {
+        var
+            CACHE_TIMEOUT = 5 * 60000, // 5 mins or make it configurable
+            cache = {};
+
+        this.timeout = timeout;
+
+        this.$get = ['$q', 'pipDataModel', function ($q, pipDataModel) {
+            return {
+                timeout: timeout,
+
+                clear: clear,
+                retrieve: retrieve,
+                retrieveOrLoad: retrieveOrLoad,
+                store: store,
+                storePermanent: storePermanent,
+                remove: remove,
+                removeItem: removeItem,
+                removeDecorator: removeDecorator,
+
+                // OBSOLETE - will be removed
+                addDecorator: addDecorator,
+                updateDecorator: updateDecorator,
+            };
+            //-------------
+
+            // Converts a string value into a numeric hash code
+            function hash(data) {
+                var filteredData = {};
+
+                // Filter only the generic parameters that can be relevant to the query
+                if(data != null) {
+                    filteredData.item = data.item;
+                    filteredData.party_id = data.party_id;
+                    filteredData.search = data.search;
+                    filteredData.paging = data.paging;
+                    filteredData.take = data.take;
+                    filteredData.skip = data.skip;
+                }
+
+                filteredData = angular.toJson(filteredData);
+                var h = 0, i, chr, len;
+                if (filteredData == null || filteredData.length === 0) return h;
+                for (i = 0, len = filteredData.length; i < len; i++) {
+                    chr = filteredData.charCodeAt(i);
+                    h = ((h << 5) - h) + chr;
+                    h |= 0; // Convert to 32bit integer
+                }
+                return h;
+            };
+
+            // Generates parameterized key
+            function generateKey(name, params) {
+                var h = hash(params);
+                return name + (h != 0 ? '_' + h : '');
+            };
+
+            // Clear the cache, globally or selectively
+            function clear(name) {
+                if (name == null) {
+                    cache = {};
+                    console.log('****** Invalidated cache');
+                } else {
+                    for (var key in cache) {
+                        if (key == name || key.startsWith(name + '_')) {
+                            console.log('****** Invalidated cache ' + key);
+                            delete cache[key];
+                        }
+                    }
+                }
+            };
+
+            // Try to retrieve collection from the cache
+            function retrieve(name, params) {
+                if (name == null) throw new Error('name cannot be null');
+                if (name == '') throw new Error('name cannot be empty');
+
+                var key = generateKey(name, params);
+                var holder = cache[key];
+                if (holder == null) return null;
+
+                // If expired then cleanup and return null
+                if (holder.expire
+                    && _.now() - holder.expire > CACHE_TIMEOUT) {
+                    delete cache[key];
+                    return null;
+                }
+
+                return holder.data;
+            };
+
+            // Store collection into the cache
+            function store(name, data, params) {
+                if (name == null) throw new Error('name cannot be null');
+                if (name == '') throw new Error('name cannot be empty');
+
+                cache[generateKey(name, params)] = {
+                    expire: _.now(),
+                    data: data
+                };
+            };
+
+            // Store collection into the cache without expiration
+            function storePermanent(name, data, params) {
+                if (name == null) throw new Error('name cannot be null');
+                if (name == '') throw new Error('name cannot be empty');
+
+                cache[generateKey(name, params)] = {
+                    expire: null,
+                    data: data
+                };
+            };
+
+            // Remove collection from the cache
+            function remove(name, params) {
+                if (name == null) throw new Error('name cannot be null');
+                if (name == '') throw new Error('name cannot be empty');
+
+                delete cache[generateKey(name, params)];
+            };
+
+            function updateItem(name, item, params) {
+                if (name == null) throw new Error('name cannot be null');
+                if (item == null) return;
+
+                var data = retrieve(name, params);
+
+                if (data != null) {
+                    var isAdded = false;
+                    for (var i = 0; i < data.length; i++) {
+                        if (data[i].id == item.id) {
+                            data[i] = item;
+                            isAdded = true;
+                            return;
+                        }
+                    }
+                    if (!isAdded) data.push(item);
+                    store(name, data, params);
+                }
+            };
+
+            // Tries to retrieve collection from the cache, otherwise load it from server
+            function retrieveOrLoad(params, successCallback, errorCallback) {
+                if (params == null) throw new Error('params cannot be null');
+                // todo add check params?
+
+                var name = (params.cache || params.resource);
+
+                // Retrieve data from cache
+                var filter = params.filter,
+                    force = !!params.force,
+                    result = !force ? retrieve(name, params) : null,
+                    deferred = $q.defer();
+
+                // Return result if it exists
+                if (result) {
+                    console.log('***** Loaded from cache ' + name, result);
+                    if (filter) result = filter(result);
+                    if (successCallback) successCallback(result);
+                    deferred.resolve(result);
+                    return deferred.promise;
+                }
+
+                // Load data from server
+                pipDataModel[params.singleResult ? 'readOne' : 'read'](
+                    params,
+                    function (data) {
+                        // Store data in cache and return
+                        params.singleResult ?
+                            updateItem(name, data, params) :
+                            store(name, data, params);
+                        if (filter) data = filter(data);
+                        deferred.resolve(data);
+
+                        console.log('***** Loaded from server ' + name, data);
+
+                        if (successCallback) successCallback(data);
+                    },
+                    function (err) {
+                        // Return error
+                        console.log('***** FAILED to load from server ' + name);
+                        deferred.reject(err);
+                        if (errorCallback) errorCallback(err);
+                    }
+                );
+
+                // Return deferred object
+                return deferred.promise;
+            };
+
+            function removeItem(name, item) {
+                if (name == null) throw new Error('name cannot be null');
+                if (item == null) return;
+
+                for (var key in cache) {
+                    if (key == name || key.startsWith(name + '_')) {
+                        var data = cache[key].data;
+                        if (angular.isArray(data)) {
+                            for (var i = 0; i < data.length; i++) {
+                                if (data[i].id == item.id) {
+                                    data.splice(i, 1);
+                                    i--;
+                                }
+                            }
+                        }
+                    }
+                }
+            };
+
+            function removeDecorator(resource, params, successCallback) {
+                return function (item) {
+                    removeItem(resource, params);
+                    if (successCallback) successCallback(item);
+                };
+            };
+
+            function updateDecorator(resource, params, successCallback) {
+                return function (item) {
+                    for (var key in cache) {
+                        if (key == resource || key.startsWith(resource + '_')) {
+                            var data = cache[key].data;
+                            if (angular.isArray(data)) {
+                                for (var i = 0; i < data.length; i++) {
+                                    if (data[i].id == item.id) {
+                                        data[i] = item;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if (successCallback) successCallback(item);
+                };
+            };
+
+            // OBSOLETE - WILL BE REMOVED ONCE CODE IS REFACTORED
+            function addDecorator(resource, params, successCallback) {
+                return function (item) {
+                    if (!params || !params.notClearedCache) clear(resource);
+                    if (successCallback) successCallback(item);
+                };
+            };
+
+        }];
+        //-----------------------
+
+        function timeout(newTimeout) {
+            if (newTimeout) {
+                CACHE_TIMEOUT = newTimeout;
+            }
+            return CACHE_TIMEOUT;
+        };
+    });
+})();
+
+
+/**
+ * @file Guides data cache
+ * @copyright Digital Living Software Corp. 2014-2016
+ */
+
+/* global angular */
+
+(function () {
+    'use strict';
+
+    var thisModule = angular.module('pipGuidesCache', ['pipGuidesData']);
+
+    thisModule.service('pipGuidesCache',
+        ['pipEnums', 'pipDataCache', 'pipTagsCache', function (pipEnums, pipDataCache, pipTagsCache) {
+
+            return {
+                readGuides: readGuides,
+                onGuideCreate: onGuideCreate,
+                onGuideUpdate: onGuideUpdate,
+                onGuideDelete: onGuideDelete                
+            };
+
+            function readGuides(params, successCallback, errorCallback) {
+                params = params || {};
+                params.resource = 'guides';
+                params.item = params.item || {};
+
+                return pipDataCache.retrieveOrLoad(params, successCallback, errorCallback);
+            };
+            
+            function onGuideCreate(params, successCallback) {
+                return pipDataCache.addDecorator(
+                    'guides', params,
+                    pipTagsCache.tagsUpdateDecorator(params, successCallback)
+                );
+            };
+
+            function onGuideUpdate(params, successCallback) {
+                return pipDataCache.updateDecorator(
+                    'guides', params,
+                    pipTagsCache.tagsUpdateDecorator(params, successCallback)
+                );
+            };
+
+            function onGuideDelete(params, successCallback) {
+                return pipDataCache.removeDecorator('guides', params, successCallback);
+            };
+                        
+        }]
+    );
+
+})();
+
+
+/**
+ * @file Session data cache
+ * @copyright Digital Living Software Corp. 2014-2016
+ */
+
+/* global angular */
+
+(function () {
+    'use strict';
+
+    var thisModule = angular.module('pipSessionCache', ['pipCore', 'pipRest', 'pipDataCache']);
+
+    thisModule.run(['$rootScope', 'pipSessionCache', function ($rootScope, pipSessionCache) {
+        $rootScope.$on('pipSessionOpened', pipSessionCache.init);
+        $rootScope.$on('pipSessionClosed', pipSessionCache.clear);
+    }]);
+
+    thisModule.service('pipSessionCache',
+        ['$rootScope', '$stateParams', '$q', 'pipTranslate', 'pipRest', 'localStorageService', 'pipAccess', 'pipEnums', 'pipSession', 'pipDataCache', function ($rootScope, $stateParams, $q, pipTranslate, pipRest, localStorageService,
+                  pipAccess, pipEnums, pipSession, pipDataCache) {
+
+            return {
+                init: init,
+                clear: clear,
+
+                readUser: readUser,
+                readParty: readParty,
+                readConnection: readConnection,
+
+                readSettings: readSettings,
+                onSettingsUpdate: onSettingsUpdate
+            };
+            //-------------
+
+            function init(event, data) {
+                if (data == null)
+                    throw new Error('Unexpected error: issues in openning session');
+
+                clear();
+                if (data.serverUrl) $rootScope.$serverUrl = data.serverUrl;
+                storeUser(data.user, null);
+            };
+
+            function clear() {
+                // Clear data cache
+                pipDataCache.clear();
+
+                // Clear global variables
+                delete $rootScope.$user;
+                delete $rootScope.$party;
+                delete $rootScope.$serverUrl;
+                delete $rootScope.$connection;
+                delete $rootScope.$settings;
+            };
+
+            function updateUserRights(user, party) {
+                // Get parameters from cache if they are not defined
+                user = user || pipDataCache.retrieve('user');
+                party = party || pipDataCache.retrieve('party');
+
+                // Exit if user is not defined
+                if (user == null) return;
+
+                // Update user access rights
+                if (party == null)
+                    user = pipAccess.asOwner(user);
+                else if (user.id == party.id)
+                    user = pipAccess.asOwner(user);
+                else
+                    user = pipAccess.toParty(user, party);
+
+                // Save user with new rights back to cache
+                pipDataCache.storePermanent('user', user);
+                $rootScope.$user = user;
+            };
+
+            function storeUserTheme(user) {
+                if (!user) return;
+                var userTheme = user.theme || 'blue';
+
+                if (user && $rootScope.$party) {
+                    if ($rootScope.$party.id == user.id) userTheme = user.theme;
+                    else userTheme = 'navy';
+                }
+
+                $rootScope.$theme = userTheme;
+                localStorageService.set('theme', userTheme);
+            };
+
+            function storeUser(user) {
+                if (user == null) return;
+
+                pipDataCache.storePermanent('user', user);
+                $rootScope.$user = user;
+                storeUserTheme(user);
+
+                // Activate user language
+                pipTranslate.use(user.language, false, true);
+                updateUserRights(user, null);
+            };
+
+            function readUser(successCallback, errorCallback) {
+                // Avoid broken session
+                if (!pipSession.opened())
+                    throw new Error('User is not authenticated.');
+
+                var
+                    userId = pipSession.userId(),
+                    user = pipDataCache.retrieve('user');
+
+                // Return user from cache
+                if (user) {
+                    if (user.id != userId)
+                        throw new Error('Unexpected error: issues in opening session');
+
+                    if (successCallback) successCallback(user);
+                    var deferred = $q.defer();
+                    deferred.resolve(user);
+                    return deferred.promise;
+                }
+
+                // Read user from server
+                return pipRest.users().get(
+                    {id: userId},
+                    function (user) {
+                        // Double check
+                        if (user.id != userId)
+                            user == null;
+
+                        storeUser(user);
+
+                        if (successCallback) successCallback(use);
+                    },
+                    errorCallback
+                ).$promise;
+            };
+
+            function readParty(stateParams, successCallback, errorCallback) {
+                // Avoid broken session
+                if (!pipSession.opened())
+                    throw new Error('User is not authenticated.');
+
+                var
+                    userId = pipSession.userId(),
+                    partyId = stateParams.party_id || userId,
+                    party = pipDataCache.retrieve('party');
+
+                // Skip if party already retrieved
+                if (party && party.id == partyId) {
+                    $rootScope.$party = party;
+
+                    storeUserTheme($rootScope.$user);
+
+                    if (successCallback) successCallback(party);
+                    var deferred = $q.defer();
+                    deferred.resolve(party);
+                    return deferred.promise;
+                }
+
+                // Read party from server
+                return pipRest.parties().get(
+                    {id: partyId},
+                    function (party) {
+                        updateUserRights(null, party);
+                        pipDataCache.storePermanent('party', party);
+                        $rootScope.$party = party;
+
+                        storeUserTheme($rootScope.$user);
+
+                        if (successCallback) successCallback(party);
+                    },
+                    errorCallback
+                ).$promise;
+            };
+
+            function readConnection(stateParams, successCallback, errorCallback) {
+                // Avoid broken session
+                if (!pipSession.opened())
+                    throw new Error('User is not authenticated.');
+
+                var
+                    userId = pipSession.userId(),
+                    partyId = stateParams.party_id || userId,
+                    connection = pipDataCache.retrieve('connection');
+
+                // Clear connection it does not match user or party
+                if (connection
+                    && (connection.party_id != userId
+                    || connection.to_party_id != partyId)) {
+                    connection = null;
+                    pipDataCache.remove('connection');
+                    delete $rootScope.$connection;
+                }
+
+                // For owner connection is not defined
+                if (userId == partyId) {
+                    if (successCallback) successCallback(connection);
+                    var deferred = $q.defer();
+                    deferred.resolve(connection);
+                    return deferred.promise;
+                }
+
+                // Read connection from server
+                return pipRest.connections().query(
+                    {
+                        party_id: userId,
+                        to_party_id: partyId,
+                        accept: pipEnums.ACCEPTANCE.ACCEPTED
+                    },
+                    function (connections) {
+                        // There are shall not be more than one active connection
+                        if (connections && connections.length > 0)
+                            connection = connections[0];
+                        else connection = null;
+
+                        pipDataCache.storePermanent('connection', connection);
+                        $rootScope.$connection = connection;
+
+                        if (successCallback) successCallback(connection);
+                    },
+                    errorCallback
+                ).$promise;
+            };
+
+            function readSettings(successCallback, errorCallback) {
+                // Avoid broken session
+                if (!pipSession.opened())
+                    throw new Error('User is not authenticated.');
+                var
+                    userId = pipSession.userId(),
+                    settings = pipDataCache.retrieve('settings' + '_' + userId);
+
+                if (settings) {
+                    if (successCallback) successCallback(settings);
+                    var deferred = $q.defer();
+                    deferred.resolve(settings);
+                    return deferred.promise;
+                }
+
+                // Read settings from server
+                return pipRest.partySettings().get(
+                    {
+                        party_id: userId
+                    },
+                    function (settings) {
+                        settings = settings || {};
+                        pipDataCache.storePermanent('settings' + '_' + userId, settings);
+                        $rootScope.$settings = settings;
+
+                        if (successCallback) successCallback(settings);
+                    },
+                    errorCallback
+                ).$promise;
+            };
+
+            function onSettingsUpdate(item, successCallback) {
+                // return function(item) {
+                if (item == null) return;
+
+                var userId = pipSession.userId(),
+                    settings = pipDataCache.retrieve('settings' + '_' + userId);
+
+                // If tags are stored
+                if (settings) {
+                    settings = _.extend(settings, item);
+                    pipDataCache.storePermanent('settings' + '_' + userId, settings);
+                    $rootScope.$settings = settings;
+                }
+
+                if (successCallback) successCallback(item);
+            };
+        }]
+    );
+
+})();
+/**
+ * @file Tags data cache
+ * @copyright Digital Living Software Corp. 2014-2016
+ */
+
+/* global angular */
+
+(function () {
+    'use strict';
+
+    var thisModule = angular.module('pipTagsCache', ['pipUtils', 'pipDataCache']);
+
+    thisModule.service('pipTagsCache',
+        ['pipTags', 'pipDataCache', function(pipTags, pipDataCache) {
+            return {
+                readTags: readTags,
+                // Todo: Add updateTags method
+                onTagsUpdate: onTagsUpdate,
+                tagsUpdateDecorator: tagsUpdateDecorator
+            };
+			//------------------------------
+
+            function tagsUpdate(params, item) {
+                // Extract tag from updated entity
+                var tags = item ? pipTags.extractTags(item) : [];
+                if (tags.length == 0) return;
+
+                var cacheName = 'partyTags';
+                if (params && params.party_id !== null && params.party_id !== undefined)
+                    cacheName = cacheName + '_' + params.party_id;
+                else if (params && params.item && params.item.party_id !== null && params.item.party_id !== undefined)
+                    cacheName = cacheName + '_' + params.item.party_id;
+
+                // Todo: this is a wrong way to get party_id (contributor) from entities
+                var data = pipDataCache.retrieve(cacheName);
+
+                // If tags are stored
+                if (data) {
+                    _.each(tags, function(tag) {
+                        // Find if tag already exists
+                        var t = _.find(data.tags, function(t) {
+                            return pipTags.equalTags(t.tag, tag);
+                        });
+
+                        // Otherwise add a new tag
+                        if (t) {
+                            t.tag = tag;
+                            t.count = t.count + 1;
+                            t.used = new Date();
+                        } else {
+                            if (!data.tags)
+                                data.tags = [];
+								
+                            data.tags.push({
+                                tag: tag,
+                                count: 1,
+                                used: new Date()
+                            });
+                        }
+                    });
+                    pipDataCache.store(cacheName, data);
+                }
+            };
+
+            function tagsUpdateDecorator(params, successCallback) {
+                return function(item) {
+                    tagsUpdate(params, item);
+
+                    if (successCallback) successCallback(item);
+                };
+            };
+
+			function readTags(params, successCallback, errorCallback) {
+				params.resource = 'partyTags';
+				params.singleResult = true;
+
+				return pipDataCache.retrieveOrLoad(params, successCallback, errorCallback);
+			};
+
+			// Todo: Add updateTags method
+
+			function onTagsUpdate(params, successCallback) {
+				return tagsUpdateDecorator(params, successCallback);
+			};
+        }]
+    );
+
+})();
+
+
+/**
+ * @file Tips data cache
+ * @copyright Digital Living Software Corp. 2014-2016
+ */
+
+/* global angular */
+
+(function () {
+    'use strict';
+
+    var thisModule = angular.module('pipTipsCache', ['pipTipsData']);
+
+    thisModule.service('pipTipsCache',
+        ['pipEnums', 'pipDataCache', 'pipTagsCache', function (pipEnums, pipDataCache, pipTagsCache) {
+
+            return {
+                readTips: readTips,
+                onTipCreate: onTipCreate,
+                onTipUpdate: onTipUpdate,
+                onTipDelete: onTipDelete                
+            };
+
+            function readTips(params, successCallback, errorCallback) {
+                params = params || {};
+                params.resource = 'tips';
+                params.item = params.item || {};
+
+                return pipDataCache.retrieveOrLoad(params, successCallback, errorCallback);
+            };
+            
+            function onTipCreate(params, successCallback) {
+                return pipDataCache.addDecorator(
+                    'tips', params,
+                    pipTagsCache.tagsUpdateDecorator(params, successCallback)
+                );
+            };
+
+            function onTipUpdate(params, successCallback) {
+                return pipDataCache.updateDecorator(
+                    'tips', params,
+                    pipTagsCache.tagsUpdateDecorator(params, successCallback)
+                );
+            };
+
+            function onTipDelete(params, successCallback) {
+                return pipDataCache.removeDecorator('tips', params, successCallback);
+            };
+                        
+        }]
+    );
+
+})();
+
+
+/**
+ * @file Announces data model
+ * @copyright Digital Living Software Corp. 2014-2016
+ */
+ 
+ /* global angular */
+ 
+(function () {
+    'use strict';
+
+    var thisModule = angular.module('pipAnnouncesData', ['pipRest', 'pipDataModel']);
+
+    thisModule.provider('pipAnnouncesData', function () {
+
+        // Read all announces
+        this.readAnnouncesResolver = function () {
+            return /* @ngInject */ ['$stateParams', 'pipRest', 'pipEnums', function ($stateParams, pipRest, pipEnums) {
+                return pipRest.announces().query().$promise;
+            }];
+        };
+
+        this.readCompletedAnnouncesResolver = function () {
+            return /* @ngInject */ ['$stateParams', 'pipRest', 'pipEnums', function ($stateParams, pipRest, pipEnums) {
+                return pipRest.announces().query( {
+                        status: pipEnums.EXECUTION_STATUS.COMPLETED
+                    }
+                ).$promise;
+            }];
+        };
+
+        this.readAnnounceResolver = function () {
+            return /* @ngInject */ ['$stateParams', 'pipRest', function ($stateParams, pipRest) {
+                return pipRest.announces().get({
+                    id: $stateParams.id
+                }).$promise;
+            }];
+        };
+
+        // CRUD operations and other business methods
+        this.$get = ['pipRest', '$stateParams', 'pipDataModel', function (pipRest, $stateParams, pipDataModel) {
+            return {
+                partyId: pipRest.partyId,
+
+                updateAnnounce: function (params, successCallback, errorCallback) {
+                    params.resource = 'announces';
+                    params.skipTransactionBegin = true;
+                    params.skipTransactionEnd = false;
+                    pipDataModel.update(
+                        params,
+                        successCallback,
+                        errorCallback
+                    );
+                },
+                
+                updateAnnounceWithFiles: function(params, successCallback, errorCallback) {
+                    params.skipTransactionEnd = true;
+                    pipDataModel.saveFiles(params, function() {
+                        params.resource = 'announces';
+                        params.skipTransactionBegin = true;
+                        params.skipTransactionEnd = false;
+                        pipDataModel.update(
+                            params,
+                            successCallback,
+                            errorCallback
+                        );
+                    });
+                },
+
+                createAnnounceWithFiles: function(params, successCallback, errorCallback) {
+                    params.skipTransactionEnd = true;
+                    pipDataModel.saveFiles(params, function() {
+                        params.resource = 'announces';
+                        params.skipTransactionBegin = true;
+                        params.skipTransactionEnd = false;
+                        pipDataModel.create(
+                            params,
+                            successCallback,
+                            errorCallback
+                        );
+                    });
+                },
+                
+                createAnnounce: function (params, successCallback, errorCallback) {
+                    params.resource = 'announces';
+                    params.skipTransactionBegin = true;
+                    params.skipTransactionEnd = false;
+                    pipDataModel.create(
+                        params,
+                        successCallback,
+                        errorCallback
+                    );
+                },
+
+                deleteAnnounce: function(params, successCallback, errorCallback) {
+                    params.resource = 'announces';
+                    pipDataModel.remove(params, successCallback, errorCallback);
+                }
+            }
+        }];
+    });
+
+})();
+/**
+ * @file Registration of all data modules
+ * @copyright Digital Living Software Corp. 2014-2016
+ */
+
+/* global angular */
+
+(function () {
+    'use strict';
+
+    angular.module('pipData', [
+		'pipDataModel',
+		'pipDataCache',
+        
+        'pipUsersData',
+        'pipSettingsData',
+        'pipSessionData',
+        'pipTagsData',
+
+        'pipAnnouncesData',
+        'pipFeedbacksData',
+        'pipImageSetsData',
+
+        'pipTipsCache',
+        'pipTipsData',
+
+        'pipGuidesCache',
+        'pipGuidesData'
+    ]);
+    
+})();
+/**
+ * @file Application abstract data model
+ * @copyright Digital Living Software Corp. 2014-2016
+ */
+
+/* global angular, _, async */
+
+(function () {
+    'use strict';
+
+    var thisModule = angular.module('pipDataModel', ['pipUtils', 'pipRest']);
+
+    thisModule.provider('pipDataModel', function() {
+        
+        this.$get = ['$stateParams', 'pipCollections', 'pipRest', function($stateParams, pipCollections, pipRest) {
+
+            var api = [];
+            
+            for (var call in pipRest) {
+                api[call] = pipRest[call];
+            }
+
+            // function extendApi(extension) {
+            //     for (var call in extension) {
+            //         api[call] = extension[call];
+            //     }
+            // }
+
+            // Execute request to REST API
+            function executeCurl(params, successCallback, errorCallback) {
+                var t = params.transaction, tid;
+
+                if (t && !params.skipTransactionBegin) {
+                    tid = params.transactionId = t.begin(
+                        params.transactionOperation || 'PROCESSING'
+                    );
+                    if (!tid) return;
+                }
+
+                return api[params.resource]()[params.operation](
+                    params.item,
+                    function (result) {
+                        if (t && tid && t.aborted(tid)) return;
+                        if (t && !params.skipTransactionEnd) t.end();
+                        if (successCallback) successCallback(result);
+                    },
+                    function (error) {
+                        if (t) t.end(error);
+                        if (errorCallback) errorCallback(error);
+                    }
+                );
+            };
+
+            // Create an object and add it to object collection
+            function createCurl(params, successCallback, errorCallback) {
+                params.transactionOperation = params.transactionOperation || 'SAVING';
+                params.operation = params.operation || 'save';
+                
+                return executeCurl(
+                    params,
+                    function(result) {
+                        if (params.itemCollection)
+                            params.itemCollection.push(result);
+
+                        if (successCallback) successCallback(result);
+                    },
+                    function(error){
+                        if (errorCallback) errorCallback(error);
+                    }
+                );
+            };
+
+            // Update an object and replace it in object collection
+            function updateCurl(params, successCallback, errorCallback) {
+                params.transactionOperation = params.transactionOperation || 'SAVING';
+                params.operation = params.operation || 'update';
+
+                return  executeCurl(
+                    params,
+                    function(result) {
+                        if (params.itemCollection)
+                            pipCollections.replaceBy(params.itemCollection, 'id', result.id, result);
+
+                        if (successCallback) successCallback(result);
+                    },
+                    errorCallback
+                );
+            };
+
+            // Update an object and remove it from object collection
+            function deleteCurl(params, successCallback, errorCallback) {
+                params.transactionOperation = params.transactionOperation || 'SAVING';
+                params.operation = params.operation || 'remove';
+
+                return executeCurl(
+                    params,
+                    function(result) {
+                        if (params.itemCollection)
+                            _.remove(params.itemCollection, {id: result.id || (params.object || {}).id || (params.item || {}).id});
+
+                        if (successCallback) successCallback(result);
+                    },
+                    errorCallback
+                );
+            };
+
+            // Read a collection of objects
+            function readCurl(params, successCallback, errorCallback) {
+                params.transactionOperation = params.transactionOperation || 'READING';
+                params.operation = params.operation || 'query';
+
+                return executeCurl(
+                    params,
+                    function(result) {
+                        if (successCallback) successCallback(result);
+                    },
+                    errorCallback
+                );
+            };
+
+            // Read a single object and add it into collection
+            function readOneCurl(params, successCallback, errorCallback) {
+                params.transactionOperation = params.transactionOperation || 'READING';
+                params.operation = params.operation || 'page';
+
+                return executeCurl(
+                    params,
+                    function(result) {
+                        if (params.itemCollection && result) {
+                            var index = _.findIndex(params.itemCollection, {id: result.id});
+                            if (index >= 0) params.itemCollection[index] = result;
+                            else params.itemCollection.push(result);
+                        }
+
+                        if (successCallback) successCallback(result);
+                    },
+                    errorCallback
+                );
+            };
+
+            // Read a page and add results into object collection
+            function pageCurl(params, successCallback, errorCallback) {
+                params.transactionOperation = params.transactionOperation || 'READING';
+                params.operation = params.operation || 'page';
+
+                return executeCurl(
+                    params,
+                    function(result) {
+                        if (params.itemCollection && result.data) {
+                            for (var i = 0; i < result.data.length; i++)
+                                params.itemCollection.push(result.data[i]);
+                        }
+
+                        if (successCallback) successCallback(result);
+                    },
+                    errorCallback
+                );
+            };
+
+            // Save picture and document files
+            function saveFilesCurl(params, successCallback, errorCallback) {
+                var t = params.transaction, tid;
+
+                // Start transaction if necessary
+                if (t && !params.skipTransactionBegin) {
+                    tid = params.transactionId = t.begin(
+                        params.transactionOperation || 'SAVING'
+                    );
+                    if (!tid) return;
+                }
+
+//------------------
+
+                var uploadFiles = [{
+                    pictures: params.pictures,
+                    documents: params.documents
+                }];
+
+                // from content
+                if (params.item && params.item.content ) {
+                    var saveResult = true;
+                    async.eachSeries(_.union(params.item.content, uploadFiles),
+                        function (obj, callback) {
+                            // не выбран - пропускаем этот item  || нет этого события action
+                            if ( !obj.pictures && !obj.documents ) {
+                                callback();
+                            } else {
+                                if (obj.pictures) {
+                                    // Save pictures first
+                                    obj.pictures.save(
+                                        function () {
+                                            if (t && tid && t.aborted(tid)) {
+                                                saveResult =  false;
+                                                callback('aborted');
+                                            }
+                                            // Save documents second
+                                            if (obj.documents) {
+                                                obj.documents.save(
+                                                    function () {
+                                                        if (t && tid && t.aborted(tid)) {
+                                                            saveResult =  false;
+                                                            callback('aborted');
+                                                        }
+                                                        callback();
+                                                    },
+                                                    function (error) {
+                                                        saveResult =  false;
+                                                        callback(error);
+                                                    }
+                                                );
+                                            } else {
+                                                callback();
+                                            }
+                                        },
+                                        function (error) {
+                                            saveResult =  false;
+                                            callback(error);
+                                        }
+                                    );
+                                } else {
+                                    if (obj.documents) {
+                                        // Save documents first
+                                        obj.documents.save(
+                                            function () {
+                                                if (t && tid && t.aborted(tid)) {
+                                                    saveResult = false;
+                                                    callback('aborted');
+                                                }
+                                                callback();
+                                            },
+                                            function (error) {
+                                                saveResult = false;
+                                                callback(error);
+                                            }
+                                        );
+                                    }
+                                }
+                            }
+                        },
+                        function (error) {
+                            if (!error && saveResult) {
+                                // удаляем ненужные объекты перед сохранением
+                                // вызываем колбек
+                                if (t & !params.skipTransactionEnd) t.end();
+                                _.each(params.item.content, function(item){
+                                    delete item.pictures;
+                                    delete item.documents;
+                                });
+                                if (successCallback) successCallback();
+                            } else {
+                                // вызываем ошибочный колбек
+                                if (t) t.end(error);
+                                if (errorCallback) {
+                                    errorCallback(error);
+                                }
+                            }
+                        }
+                    );
+                } else {
+                    if (params.pictures) {
+                        // Save pictures first
+                        params.pictures.save(
+                            function () {
+                                if (t && tid && t.aborted(tid)) return;
+
+                                // Save documents second
+                                if (params.documents) {
+                                    params.documents.save(
+                                        function () {
+                                            if (t && tid && t.aborted(tid)) return;
+                                            // Do everything else
+                                            if (t & !params.skipTransactionEnd) t.end();
+                                            if (successCallback) successCallback();
+                                        },
+                                        function (error) {
+                                            if (t) t.end(error);
+                                            if (errorCallback) errorCallback(error);
+                                        }
+                                    );
+                                } else {
+                                    // Do everything else
+                                    if (t & !params.skipTransactionEnd) t.end();
+                                    if (successCallback) successCallback();
+                                }
+                            },
+                            function (error) {
+                                if (t) t.end(error);
+                                if (errorCallback) errorCallback(error);
+                            }
+                        );
+                    } else if (params.documents) {
+                        // Save documents first
+                        params.documents.save(
+                            function () {
+                                if (t && tid && t.aborted(tid)) return;
+                                // Do everything else
+                                if (t & !params.skipTransactionEnd) t.end();
+                                if (successCallback) successCallback();
+                            },
+                            function (error) {
+                                if (t) t.end(error);
+                                if (errorCallback) errorCallback(error);
+                            }
+                        );
+                    } else {
+                        // Do everything else
+                        if (t & !params.skipTransactionEnd) t.end();
+                        if (successCallback) successCallback();
+                    }
+                }
+            };
+
+            // Abort transaction with file upload
+            function abortFilesCurl(params) {
+                if (params.pictures) 
+                    params.pictures.abort();
+                if (params.documents)
+                    params.documents.abort();
+                    if (params.transaction)
+                    params.transaction.abort();  
+            };
+
+            return {
+                // extendApi: extendApi,
+
+                // Executing transactional requests to server
+                execute: executeCurl,
+
+                // Creating an object
+                create: createCurl,
+
+                // Updating an object
+                update: updateCurl,
+                save: updateCurl,
+
+                // Deleting an object
+                'delete': deleteCurl,
+                remove: deleteCurl,
+
+                // Reading objects
+                read: readCurl,
+                query: readCurl,
+
+                // Reading a single object
+                readOne: readOneCurl,
+                get: readOneCurl,
+
+                // Reading paginated results
+                page: pageCurl,
+                readPage: pageCurl,
+                queryPage: pageCurl,
+
+                // Saving files to file store
+                saveFiles: saveFilesCurl,
+                abortFiles: abortFilesCurl
+            }
+        }];
+    });
+
+})();
+
+/**
+ * @file Feedbacks data model
+ * @copyright Digital Living Software Corp. 2014-2016
+ */
+ 
+/* global angular */
+
+(function () {
+    'use strict';
+
+    var thisModule = angular.module('pipFeedbacksData', ['pipRest', 'pipDataModel']);
+
+    thisModule.provider('pipFeedbacksData', function() {
+
+        this.readFeedbacksResolver = function () {
+            return /* @ngInject */ ['$stateParams', 'pipRest', function ($stateParams, pipRest) {
+                return pipRest.feedbacks().query().$promise;
+            }];
+        };
+
+        this.readFeedbackResolver = function () {
+            return /* @ngInject */ ['$stateParams', 'pipRest', function ($stateParams, pipRest) {
+                return pipRest.feedbacks().get({
+                    id: $stateParams.id
+                }).$promise;
+            }];
+        };
+
+        this.$get = ['$stateParams', 'pipRest', 'pipDataModel', function($stateParams, pipRest, pipDataModel) {
+            return {
+
+                sendFeedback: function(params, successCallback, errorCallback) {
+                    params.resource = 'feedbacks';
+                    pipDataModel.create(params, successCallback, errorCallback);
+                },
+
+                createFeedbackWithFiles: function(params, successCallback, errorCallback) {
+                    params.skipTransactionEnd = true;
+                    pipDataModel.saveFiles(params, function() {
+                        params.resource = 'feedbacks';
+                        params.skipTransactionBegin = true;
+                        params.skipTransactionEnd = false;
+                        pipDataModel.create(params, successCallback, errorCallback);
+                    });
+                },
+
+                updateFeedback: function (params, successCallback, errorCallback) {
+                    params.resource = 'feedbacks';
+                    params.skipTransactionBegin = true;
+                    params.skipTransactionEnd = false;
+                    pipDataModel.update(
+                        params,
+                        successCallback,
+                        errorCallback
+                    );
+                },
+
+                deleteFeedback: function(params, successCallback, errorCallback) {
+                    params.resource = 'feedbacks';
+                    pipDataModel.remove(params, successCallback, errorCallback);
+                }
+            };
+        }];
+    });
+
+})();
+
+/**
+ * @file Guides data model
+ * @copyright Digital Living Software Corp. 2014-2016
+ */
+ 
+ /* global angular */
+ 
+(function () {
+    'use strict';
+
+    var thisModule = angular.module('pipGuidesData', ['pipRest', 'pipDataModel']);
+
+    thisModule.provider('pipGuidesData', function () {
+        var PAGE_SIZE = 5;
+
+        // Read all guides
+        this.readGuidesResolver = function () {
+            return /* @ngInject */ ['$stateParams', 'pipRest', function ($stateParams, pipRest) {
+                return pipRest.guides().query().$promise;
+            }];
+        };
+        
+        this.readIntroGuidesResolver = function () {
+            return /* @ngInject */ ['$stateParams', 'pipRest', function ($stateParams, pipRest) {
+                return pipRest.guides().query({
+                        type: 'intro',
+                        status : 'completed'
+                }).$promise;
+            }];
+        };
+
+        this.readGuideResolver = function () {
+            return /* @ngInject */ ['$stateParams', 'pipRest', function ($stateParams, pipRest) {
+                return pipRest.guides().get({
+                    id: $stateParams.id || '55bf23d3bb22aa175c3e498e'
+                }).$promise;
+            }];
+        };
+
+        // CRUD operations and other business methods
+        this.$get = ['pipRest', '$stateParams', 'pipDataModel', 'pipGuidesCache', function (pipRest, $stateParams, pipDataModel, pipGuidesCache) {
+            return {
+                partyId: pipRest.partyId,
+
+                readGuides: function(params, successCallback, errorCallback) {
+                    params.resource = 'guides';
+                    params.party_id = pipRest.partyId($stateParams);
+                    return pipGuidesCache.readGuides(params, successCallback, errorCallback);
+                },
+
+                readIntroGuides: function(params, successCallback, errorCallback) {
+                    params.resource = 'guides';
+                    params.party_id = pipRest.partyId($stateParams);
+                    params.type = 'intro';
+                    params.status = 'completed';
+                    return pipGuidesCache.readGuides(params, successCallback, errorCallback);
+                },
+
+                readGuide: function (params, successCallback, errorCallback) {
+                    params.resource = 'guides';
+                    params.item = params.item || {};
+                    params.item.party_id = pipRest.partyId($stateParams);
+                    params.item.id = params.item.id || $stateParams.id;
+                    return pipDataModel.readOne(params, pipGuidesCache.onGuideUpdate(params, successCallback), errorCallback);
+                },
+
+                createGuide: function (params, successCallback, errorCallback) {
+                    params.resource =  'guides';
+                    params.item = params.item || {};
+                    params.item.party_id = pipRest.partyId($stateParams);
+                    pipDataModel.create(
+                        params,
+                        pipGuidesCache.onGuideCreate(params, successCallback),
+                        errorCallback
+                    );
+                },
+
+                createGuideWithFiles: function(params, successCallback, errorCallback) {
+                    params.skipTransactionEnd = true;
+                    pipDataModel.saveFiles(params, function() {
+                        params.resource = 'guides';
+                        params.skipTransactionBegin = true;
+                        params.skipTransactionEnd = false;
+                        pipDataModel.create(
+                            params,
+                            pipGuidesCache.onGuideCreate(params, successCallback),
+                            errorCallback
+                        );
+                    });
+                },
+
+                updateGuide: function (params, successCallback, errorCallback) {
+                    params.resource = 'guides';
+                    params.skipTransactionBegin = true;
+                    params.skipTransactionEnd = false;
+                    pipDataModel.update(
+                        params,
+                        pipGuidesCache.onGuideUpdate(params, successCallback),
+                        errorCallback
+                    );
+                },
+                
+                updateGuideWithFiles: function(params, successCallback, errorCallback) {
+                    params.skipTransactionEnd = true;
+                    pipDataModel.saveFiles(params, function() {
+                        params.resource = 'guides';
+                        params.skipTransactionBegin = true;
+                        params.skipTransactionEnd = false;
+                        pipDataModel.update(
+                            params,
+                            pipGuidesCache.onGuideUpdate(params, successCallback),
+                            errorCallback
+                        );
+                    });
+                },
+
+                
+                deleteGuide: function(params, successCallback, errorCallback) {
+                    params.resource = 'guides';
+                    pipDataModel.remove(params, pipGuidesCache.onGuideDelete(params, successCallback),  errorCallback);
+                }
+
+            }
+        }];
+    });
+
+})();
+/**
+ * @file Image sets data model
+ * @copyright Digital Living Software Corp. 2014-2016
+ */
+ 
+ /* global angular */
+ 
+(function () {
+    'use strict';
+    
+    var thisModule = angular.module('pipImageSetsData', ['pipRest', 'pipDataModel']);
+
+    thisModule.provider('pipImageSetsData', function () {
+        var PAGE_SIZE = 15;
+
+        // Read all image sets
+        this.readImageSetsResolver = function () {
+            return /* @ngInject */ ['$stateParams', 'pipRest', function ($stateParams, pipRest) {
+                return pipRest.image_sets().get({
+                    paging: 1,
+                    skip: 0,
+                    take: PAGE_SIZE,
+                    search: $stateParams.search,
+                    //tags: $stateParams.search
+                }).$promise;
+            }];
+        };
+
+        this.readImageSetResolver = function () {
+            return /* @ngInject */ ['$stateParams', 'pipRest', function ($stateParams, pipRest) {
+                return pipRest.image_sets().get({
+                    id: $stateParams.id
+                }).$promise;
+            }];
+        };
+
+        // CRUD operations and other business methods
+        this.$get = ['pipRest', '$stateParams', 'pipDataModel', function (pipRest, $stateParams, pipDataModel) {
+
+            return {
+                partyId: pipRest.partyId,
+
+                readImageSets: function (params, transaction, successCallback, errorCallback) {
+                    params.resource = 'image_sets';
+
+                    params.skipTransactionBegin = true;
+                    params.skipTransactionEnd = false;
+                    params.item.search = $stateParams.search || params.item.search;
+                   // params.item.tags = $stateParams.search || params.item.search;
+
+                    params.item.party_id = pipRest.partyId($stateParams);
+                    params.item.take = PAGE_SIZE;
+                    params.item.paging = 1;
+
+                    pipDataModel.page(
+                        params,
+                        successCallback,
+                        errorCallback
+                    );
+                },
+
+                updateImageSet: function (params, successCallback, errorCallback) {
+                    params.resource = 'image_sets';
+                    params.skipTransactionBegin = true;
+                    params.skipTransactionEnd = false;
+                    pipDataModel.update(
+                        params,
+                        successCallback,
+                        errorCallback
+                    );
+                },
+
+                createImageSet: function (params, successCallback, errorCallback) {
+                    params.resource = 'image_sets';
+                    params.skipTransactionBegin = true;
+                    params.skipTransactionEnd = false;
+                    pipDataModel.create(
+                        params,
+                        successCallback,
+                        errorCallback
+                    );
+                },
+
+                createImageSetWithFiles: function(params, successCallback, errorCallback) {
+                    params.skipTransactionEnd = true;
+                    pipDataModel.saveFiles(params, function() {
+                        params.resource = 'image_sets';
+                        params.skipTransactionBegin = true;
+                        params.skipTransactionEnd = false;
+                        pipDataModel.create(
+                            params,
+                            successCallback,
+                            errorCallback
+                        );
+                    });
+                },
+
+                updateImageSetWithFiles: function(params, successCallback, errorCallback) {
+                    params.skipTransactionEnd = true;
+                    pipDataModel.saveFiles(params, function() {
+                        params.resource = 'image_sets';
+                        params.skipTransactionBegin = true;
+                        params.skipTransactionEnd = false;
+                        pipDataModel.update(
+                            params,
+                            successCallback,
+                            errorCallback
+                        );
+                    });
+                },
+
+                deleteImageSet: function(params, successCallback, errorCallback) {
+                    params.resource = 'image_sets';
+                    pipDataModel.remove(params, successCallback, errorCallback);
+                }
+            }
+        }];
+    });
+
+})();
+
+/**
+ * @file Session data model
+ * @copyright Digital Living Software Corp. 2014-2016
+ */
+
+/* global _, angular */
+
+(function () {
+    'use strict';
+
+    var thisModule = angular.module('pipSessionData', ['pipRest', 'pipSessionCache']);
+
+    thisModule.provider('pipSessionData', function() {
+
+        readUserResolver.$inject = ['pipSessionCache'];
+        readPartyResolver.$inject = ['pipSessionCache', '$stateParams'];
+        readConnectionResolver.$inject = ['pipSessionCache', '$stateParams'];
+        readSettingsResolver.$inject = ['pipSessionCache'];
+        readSessionsUserResolver.$inject = ['$stateParams', 'pipRest', '$rootScope'];
+        readSessionIdResolver.$inject = ['$stateParams', 'pipSession'];
+        this.readUserResolver = /* @ngInject */ readUserResolver;
+        this.readPartyResolver = /* @ngInject */ readPartyResolver;
+        this.readConnectionResolver = /* @ngInject */ readConnectionResolver;
+        this.readSettingsResolver = /* @ngInject */ readSettingsResolver;
+
+        this.readSessionsUserResolver = /* @ngInject */ readSessionsUserResolver;
+        this.readSessionIdResolver = /* @ngInject */ readSessionIdResolver;
+
+        this.$get = ['$rootScope', '$stateParams', 'pipRest', function($rootScope, $stateParams, pipRest) {
+            return {
+                getSessionId: getSessionId,
+                removeSession: removeSession
+            };
+
+            function getSessionId(pipSession){
+                return function () {
+                    return pipSession.sessionId();
+                };
+            };
+
+            function removeSession(transaction, session, successCallback, errorCallback) {
+                var tid = transaction.begin('REMOVING');
+                if (!tid) return;
+
+                pipRest.userSessions().remove(
+                    {
+                        id: session.id,
+                        party_id: $stateParams.id
+                    },
+                    function (removedSession) {
+                        if (transaction.aborted(tid)) return;
+                        else transaction.end();
+
+                        if (successCallback) successCallback(removedSession);
+                    },
+                    function (error) {
+                        transaction.end(error);
+                        if (errorCallback) errorCallback(error);
+                    }
+                );
+            };
+            
+        }];
+        //--------------
+
+        function readUserResolver(pipSessionCache) {
+            return pipSessionCache.readUser();                             
+        };
+
+        function readPartyResolver(pipSessionCache, $stateParams) {
+            return pipSessionCache.readParty($stateParams);
+        };
+
+        function readConnectionResolver(pipSessionCache, $stateParams) {
+            return pipSessionCache.readConnection($stateParams);
+        };
+
+        function readSettingsResolver(pipSessionCache) {
+            return pipSessionCache.readSettings();                             
+        };
+
+        function readSessionsUserResolver($stateParams, pipRest, $rootScope) {
+            return pipRest.userSessions().query({
+                party_id: $stateParams.id
+            }).$promise;
+        };
+
+        function readSessionIdResolver($stateParams, pipSession) {
+            return pipSession.sessionId();
+        };
+        
+    });
+
+})();
+
+/**
+ * @file Settings data model
+ * @copyright Digital Living Software Corp. 2014-2016
+ * @todo Rewrite, use cached settings, remove unrelated methods
+ */
+
+/* global _, angular */
+
+(function () {
+    'use strict';
+
+    var thisModule = angular.module('pipSettingsData', ['pipRest', 'pipSessionData', 'pipSessionCache', 'pipDataModel']);
+
+    thisModule.provider('pipSettingsData', ['pipSessionDataProvider', function (pipSessionDataProvider) {
+
+        this.readSettingsResolver = pipSessionDataProvider.readSettingsResolver;
+
+        this.$get = ['$rootScope', '$stateParams', 'pipRest', 'pipSessionCache', 'pipSession', 'pipDataModel', function ($rootScope, $stateParams, pipRest, pipSessionCache, pipSession, pipDataModel) {
+            return {
+                // Saving generic settings
+                saveSettings: saveSettings,
+                readSettings: readSettings,
+                reReadSettings: reReadSettings
+
+            };
+
+            function readSettings(successCallback, errorCallback) {
+                return pipSessionCache.readSettings(successCallback, errorCallback)
+            };
+
+            // force read settings from server and update cache
+            function reReadSettings(successCallback, errorCallback) {
+                return pipRest.partySettings().get(
+                    {
+                        party_id: pipSession.userId()
+                    },
+                    function (settings) {
+                        settings = settings || {};
+                        pipSessionCache.onSettingsUpdate(settings);
+                        if (successCallback) successCallback(settings);
+                    },
+                    errorCallback
+                ).$promise;
+            };
+
+            function saveSettings(settings, keys, successCallback, errorCallback) {
+                // Extract specific keys
+                settings = keys ? _.pick(settings, keys) : settings;
+                settings.party_id = pipSession.userId();
+                var oldSettings = _.cloneDeep($rootScope.$settings);
+                pipSessionCache.onSettingsUpdate(settings);
+
+                var params = {};
+                params.resource = 'partySettings';
+                params.item = settings;
+                params.item.creator_id = pipSession.userId();
+
+                pipDataModel.create(
+                    params,
+                    successCallback,
+                    function (error) {
+                        pipSessionCache.onSettingsUpdate(oldSettings);
+
+                        if (errorCallback) errorCallback(error);
+                    }
+                );
+            };
+        }];
+    }]);
+
+})();
+
+/**
+ * @file Tags data model
+ * @copyright Digital Living Software Corp. 2014-2016
+ */
+
+/* global angular */
+
+(function () {
+    'use strict';
+
+    var thisModule = angular.module('pipTagsData', ['pipRest' , 'pipDataModel', 'pipTagsCache']);
+
+    thisModule.provider('pipTagsData', function() {
+        
+        this.readTagsResolver = function() {
+            return /* @ngInject */ ['$stateParams', 'pipRest', 'pipTagsCache', function($stateParams, pipRest, pipTagsCache) {
+                return pipTagsCache.readTags({
+                    item: { party_id: pipRest.partyId($stateParams) }
+                });
+            }];
+        };
+
+        this.$get = ['$stateParams', '$state', 'pipRest', 'pipDataModel', 'pipTagsCache', function($stateParams, $state, pipRest, pipDataModel, pipTagsCache) {
+            return {
+                partyId: pipRest.partyId,
+                
+                readTags: function(params, successCallback, errorCallback) {
+                    params = params || {};
+                    params.item = params.item || {};
+                    if(params.item.party_id == null) {
+                        params.item.party_id = pipRest.partyId($stateParams);
+                    }
+                    return pipTagsCache.readTags(params, successCallback, errorCallback);
+                }
+            }
+        }];
+    });
+
+})();
+
+/**
+ * @file Tips data model
+ * @copyright Digital Living Software Corp. 2014-2016
+ */
+
+/* global angular */
+
+(function () {
+    'use strict';
+
+    var thisModule = angular.module('pipTipsData', ['pipRest', 'pipDataModel']);
+
+    thisModule.provider('pipTipsData', function () {
+        var PAGE_SIZE = 100;
+
+        // Read all tips
+        this.readTipsResolver = function () {
+            return /* @ngInject */ ['$stateParams', 'pipRest', function ($stateParams, pipRest) {
+                return pipRest.tips().query().$promise;
+            }];
+        };
+
+        this.readTipResolver = function () {
+            return /* @ngInject */ ['$stateParams', 'pipRest', function ($stateParams, pipRest) {
+                return pipRest.tips().get({
+                    id: $stateParams.id
+                }).$promise;
+            }];
+        };
+
+        // CRUD operations and other business methods
+        this.$get = ['pipRest', '$stateParams', 'pipDataModel', 'pipTipsCache', function (pipRest, $stateParams, pipDataModel, pipTipsCache) {
+
+            return {
+                partyId: pipRest.partyId,
+
+// todo update after optimization rezolver
+                readTips: function (params, successCallback, errorCallback) {
+                    params.resource = 'tips';
+                    params.item = params.item || {};
+                    params.item.search = $stateParams.search;
+                    params.item.tags = $stateParams.search;
+                    params.item.party_id = pipRest.partyId($stateParams);
+                    return pipTipsCache.readTips(params, successCallback, errorCallback);
+                },
+
+                createTip: function (params, successCallback, errorCallback) {
+                    params.resource = 'tips';
+                    params.item = params.item || {};
+                    params.item.party_id = pipRest.partyId($stateParams);
+                    pipDataModel.create(
+                        params,
+                        pipTipsCache.onTipCreate(params, successCallback),
+                        errorCallback
+                    );
+                },
+                
+                createTipWithFiles: function(params, successCallback, errorCallback) {
+                    params.skipTransactionEnd = true;
+                    params.item = params.item || {};
+                    params.item.party_id = pipRest.partyId($stateParams);
+                    pipDataModel.saveFiles(params, function() {
+                        params.resource = 'tips';
+                        params.skipTransactionBegin = true;
+                        params.skipTransactionEnd = false;
+                        
+                        params.item.party_id = pipRest.partyId($stateParams);
+                        pipDataModel.create(
+                            params,
+                            pipTipsCache.onTipCreate(params, successCallback),
+                            errorCallback
+                        );
+                    }, errorCallback);
+                },
+
+                updateTip: function (params, successCallback, errorCallback) {
+                    params.resource = 'tips';
+                    params.item = params.item || {};
+                    params.item.party_id = pipRest.partyId($stateParams);
+                    pipDataModel.update(
+                        params,
+                        pipTipsCache.onTipUpdate(params, successCallback),
+                        errorCallback
+                    );
+                },
+                
+                updateTipWithFiles: function(params, successCallback, errorCallback) {
+                    params.skipTransactionEnd = true;
+                    params.item = params.item || {};
+                    params.item.party_id = pipRest.partyId($stateParams);
+                    pipDataModel.saveFiles(params, function() {
+                        params.resource = 'tips';
+                        params.skipTransactionBegin = true;
+                        params.skipTransactionEnd = false;
+                        
+                        params.item.party_id = pipRest.partyId($stateParams);
+                        pipDataModel.update(
+                            params,
+                            pipTipsCache.onTipUpdate(params, successCallback),
+                            errorCallback
+                        );
+                    });
+                },
+
+                deleteTip: function(params, successCallback, errorCallback) {
+                    params.resource = 'tips';
+                    pipDataModel.remove(params, pipTipsCache.onTipDelete(params, successCallback), errorCallback);
+                }
+            }
+        }];
+    });
+
+})();
+
+/**
+ * @file Users data model
+ * @copyright Digital Living Software Corp. 2014-2016
+ */
+
+/* global angular */
+
+(function () {
+    'use strict';
+
+    var thisModule = angular.module('pipUsersData', ['pipRest']);
+
+    thisModule.provider('pipUsersData', function () {
+
+        this.readUsersResolver = function () {
+            return /* @ngInject */ ['$stateParams', 'pipRest', function ($stateParams, pipRest) {
+                return pipRest.users().page({
+                    party_id: $stateParams.id,
+                    paging: $stateParams.paging || 1,
+                    skip: $stateParams.skip || 0,
+                    take: $stateParams.take || 15
+                }).$promise;
+            }];
+        };
+
+        this.readUserResolver = function () {
+            return /* @ngInject */ ['$stateParams', 'pipRest', function ($stateParams, pipRest) {
+                return pipRest.users().get({
+                    id: $stateParams.id,
+                    party_id: pipRest.partyId($stateParams)
+                }).$promise;
+
+            }];
+        };
+
+        this.readActivitiesUserResolver = /* @ngInject */
+            ['$stateParams', 'pipRest', '$rootScope', function ($stateParams, pipRest, $rootScope) {
+                return pipRest.partyActivities().page({
+                    party_id: $rootScope.$user.id,
+                    paging: 1,
+                    skip: 0,
+                    take: 25
+                }).$promise;
+            }];
+
+        // CRUD operations and other business methods
+        this.$get = ['pipRest', '$stateParams', function (pipRest, $stateParams) {   
+            return {
+                partyId: pipRest.partyId,
+
+                readUsers: function (params, transaction, successCallback, errorCallback) {
+                    pipRest.users().page(
+                        {
+                            party_id: pipRest.partyId($stateParams),
+                            paging: 1,
+                            skip: params.start,
+                            search: params.item.search ,
+                            active: params.item.active,
+                            paid: params.item.paid,
+                            admin: params.item.admin,
+                            take: 15
+                        },
+                        function (pagedUsers) {
+                            if (successCallback) successCallback(pagedUsers);
+                        },
+                        function (error) {
+                            errorCallback(error);
+                        }
+                    );
+                },
+                
+                updateUser: function (item, transaction, successCallback, errorCallback) {
+                    pipRest.users().update(
+                        item.item,
+                        function (updatedItem) {
+                            if (successCallback) successCallback(updatedItem);
+                        },
+                        function (error) {
+                            errorCallback(error);
+                        }
+                    );
+                }
+
+            }
+        }];
+    });
 
 })();
 //# sourceMappingURL=pip-webui-rest.js.map

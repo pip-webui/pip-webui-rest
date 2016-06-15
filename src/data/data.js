@@ -19,11 +19,13 @@
 
         'pipAnnouncesData',
         'pipFeedbacksData',
-        'pipGuidesData',
         'pipImageSetsData',
 
         'pipTipsCache',
-        'pipTipsData'
+        'pipTipsData',
+
+        'pipGuidesCache',
+        'pipGuidesData'
     ]);
     
 })();

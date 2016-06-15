@@ -38,26 +38,41 @@
         };
 
         // CRUD operations and other business methods
-        this.$get = function (pipRest, $stateParams, pipDataModel) {
+        this.$get = function (pipRest, $stateParams, pipDataModel, pipGuidesCache) {
             return {
                 partyId: pipRest.partyId,
-
-                updateGuide: function (params, successCallback, errorCallback) {
-                    params.resource = 'guides';
-                    params.skipTransactionBegin = true;
-                    params.skipTransactionEnd = false;
-                    pipDataModel.update(
-                        params,
-                        successCallback,
-                        errorCallback
-                    );
-                },
 
                 readGuides: function(params, successCallback, errorCallback) {
                     params.resource = 'guides';
                     params.party_id = pipRest.partyId($stateParams);
+                    return pipGuidesCache.readGuides(params, successCallback, errorCallback);
+                },
+
+                readIntroGuides: function(params, successCallback, errorCallback) {
+                    params.resource = 'guides';
+                    params.party_id = pipRest.partyId($stateParams);
                     params.type = 'intro';
-                    return pipDataModel.read(params, successCallback, errorCallback);
+                    params.status = 'completed';
+                    return pipGuidesCache.readGuides(params, successCallback, errorCallback);
+                },
+
+                readGuide: function (params, successCallback, errorCallback) {
+                    params.resource = 'guides';
+                    params.item = params.item || {};
+                    params.item.party_id = pipRest.partyId($stateParams);
+                    params.item.id = params.item.id || $stateParams.id;
+                    return pipDataModel.readOne(params, pipGuidesCache.onGuideUpdate(params, successCallback), errorCallback);
+                },
+
+                createGuide: function (params, successCallback, errorCallback) {
+                    params.resource =  'guides';
+                    params.item = params.item || {};
+                    params.item.party_id = pipRest.partyId($stateParams);
+                    pipDataModel.create(
+                        params,
+                        pipGuidesCache.onGuideCreate(params, successCallback),
+                        errorCallback
+                    );
                 },
 
                 createGuideWithFiles: function(params, successCallback, errorCallback) {
@@ -68,10 +83,21 @@
                         params.skipTransactionEnd = false;
                         pipDataModel.create(
                             params,
-                            successCallback,
+                            pipGuidesCache.onGuideCreate(params, successCallback),
                             errorCallback
                         );
                     });
+                },
+
+                updateGuide: function (params, successCallback, errorCallback) {
+                    params.resource = 'guides';
+                    params.skipTransactionBegin = true;
+                    params.skipTransactionEnd = false;
+                    pipDataModel.update(
+                        params,
+                        pipGuidesCache.onGuideUpdate(params, successCallback),
+                        errorCallback
+                    );
                 },
                 
                 updateGuideWithFiles: function(params, successCallback, errorCallback) {
@@ -82,26 +108,16 @@
                         params.skipTransactionEnd = false;
                         pipDataModel.update(
                             params,
-                            successCallback,
+                            pipGuidesCache.onGuideUpdate(params, successCallback),
                             errorCallback
                         );
                     });
                 },
 
-                createGuide: function (params, successCallback, errorCallback) {
-                    params.resource = 'guides';
-                    params.skipTransactionBegin = true;
-                    params.skipTransactionEnd = false;
-                    pipDataModel.create(
-                        params,
-                        successCallback,
-                        errorCallback
-                    );
-                },
                 
                 deleteGuide: function(params, successCallback, errorCallback) {
                     params.resource = 'guides';
-                    pipDataModel.remove(params, successCallback, errorCallback);
+                    pipDataModel.remove(params, pipGuidesCache.onGuideDelete(params, successCallback),  errorCallback);
                 }
 
             }

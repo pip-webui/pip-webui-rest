@@ -37,10 +37,10 @@
   "dependencies": {
   },
   "devDependencies": {
-    "pip-webui-tasks": "git+ssh://git@github.com:pip-webui/pip-webui-tasks.git",
-    "pip-webui-lib": "git+ssh://git@github.com:pip-webui/pip-webui-lib.git",
-    "pip-webui-core": "git+ssh://git@github.com:pip-webui/pip-webui-core.git",
-    "pip-webui-test": "git+ssh://git@github.com:pip-webui/pip-webui-test.git",
+    "pip-webui-tasks": "git+https://github.com/pip-webui/pip-webui-tasks.git",
+    "pip-webui-lib": "git+https://github.com/pip-webui/pip-webui-lib.git",
+    "pip-webui-core": "git+https://github.com/pip-webui/pip-webui-core.git",
+    "pip-webui-test": "git+https://github.com/pip-webui/pip-webui-test.git",
     "angular-mocks": "*",
     "karma": "*",
     "karma-chrome-launcher": "*",

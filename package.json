@@ -30,7 +30,7 @@
   "private": true,
   "scripts": {
     "build": "gulp build",
-    "jshint": "gulp jshint",
+    "lint": "gulp lint",
     "samples": "gulp launch",
     "test": "mocha -t 5000 -R spec --recursive ./test"
   },

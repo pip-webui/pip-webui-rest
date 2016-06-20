@@ -22,7 +22,7 @@ module.exports = function(config) {
       { pattern: '**/*.html', included: false },
       '../test/test_config.js',
       '../test/data_set.test.js',
-      '../test/**/session.test.js'
+      '../test/**/*.js'
     ],
 
 

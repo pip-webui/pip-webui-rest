@@ -1,6 +1,6 @@
 'use strict';
 
-suite('pipAuthHttpResponseInterceptor', function() {
+describe('pipAuthHttpResponseInterceptor', function() {
     var serverUrl = 'http://alpha.pipservices.net';
 
     var
@@ -14,7 +14,7 @@ suite('pipAuthHttpResponseInterceptor', function() {
         pipRest,
         testDataSet;
 
-    setup(function() {
+    beforeEach(function() {
         module('pipRest.State');
         module('test.DataSet');
 
@@ -32,7 +32,7 @@ suite('pipAuthHttpResponseInterceptor', function() {
         });
     });
 
-    test('should be defined functions', function(done) {
+    it('should be defined functions', function(done) {
         assert.isDefined(pipSession.opened);
         assert.isDefined(pipSession.userId);
         assert.isDefined(pipSession.sessionId);
@@ -50,18 +50,18 @@ suite('pipAuthHttpResponseInterceptor', function() {
         done();
     });
 
-    suite('should be open session', function() {
+    describe('should be open session', function() {
         var sandbox;
 
-        suiteSetup(function() {
+        beforeEach(function() {
             sandbox = sinon.sandbox.create();
         });
 
-        suiteTeardown(function() {
+        afterEach(function() {
             sandbox.restore();
         });
 
-        test.only('should be open session, user date is not remember ', function(done) {
+        it('should be open session, user date is not remember ', function(done) {
             sandbox.stub($rootScope, "$broadcast");
             //stub.onFirstCall().returns(true); ???
             var user = testDataSet.getUser(),
@@ -85,7 +85,7 @@ suite('pipAuthHttpResponseInterceptor', function() {
 
     });
 
-    test('should be signin', function(done) {
+    it('should be signin', function(done) {
         requestHandler = $httpBackend.when('POST', serverUrl + '/api/signin')
             .respond({name: "Boy", email: 'stas@test.ru' , language: "en", pwd_fail_count: 0, pwd_last_fail: null});
 

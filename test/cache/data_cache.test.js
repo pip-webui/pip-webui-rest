@@ -222,23 +222,23 @@ function resetCache(dataCache) {
 };
 
 
-suite('data cache', function() {
+describe('data cache', function() {
 
     var dataModel,
         $rootScope,
         dataCache;
 
-    setup(module('pipDataCache'));
-    setup(inject(function (pipDataCache) {
+    beforeEach(module('pipDataCache'));
+    beforeEach(inject(function (pipDataCache) {
         dataCache = pipDataCache;
     }));
-    setup(inject(function(_$rootScope_, pipDataCache, pipDataModel) {
+    beforeEach(inject(function(_$rootScope_, pipDataCache, pipDataModel) {
         $rootScope = _$rootScope_;
         dataCache = pipDataCache;
         dataModel = pipDataModel;
     }));
 
-    test('should be define functions', function(done) {
+    it('should be define functions', function(done) {
         assert.isDefined(dataModel);
         assert.isDefined(dataCache);
         assert.isDefined(dataCache.clear);
@@ -257,9 +257,9 @@ suite('data cache', function() {
         done();
     });
 
-    suite('should be check starting parameter', function() {
+    describe('should be check starting parameter', function() {
 
-        test('should be clearing cache', function(done) {
+        it('should be clearing cache', function(done) {
             assert.isDefined(dataModel);
             assert.isDefined(dataCache.clear);
             assert.isDefined(dataCache.retrieve);
@@ -268,7 +268,7 @@ suite('data cache', function() {
             done();
         });
 
-        test('should be set timeout for cache', function(done) {
+        it('should be set timeout for cache', function(done) {
             assert.isDefined(dataCache.timeout);
             assert.equal(dataCache.timeout(), 5 * 60000);
             assert.equal(dataCache.timeout(60000), 60000);
@@ -280,18 +280,18 @@ suite('data cache', function() {
 
     });
 
-    suite('should be store and retrieve collection into the cache', function() {
+    describe('should be store and retrieve collection into the cache', function() {
         var someData = 'GOALS',
             storedData = null;
 
-        test('should be empty cache', function(done) {
+        it('should be empty cache', function(done) {
             // no collection
             assert.isNull(dataCache.retrieve(someData));
 
             done();
         });
 
-        test('should be store and read collection', function(done) {
+        it('should be store and read collection', function(done) {
             dataCache.store(someData, GOALS);
             storedData = dataCache.retrieve(someData);
             assert.isDefined(storedData);
@@ -302,7 +302,7 @@ suite('data cache', function() {
             done();
         });
 
-        test('should be store and retrieve empty collection', function(done) {
+        it('should be store and retrieve empty collection', function(done) {
             // store empty collection
             dataCache.store(someData, []);
             storedData = dataCache.retrieve(someData);
@@ -315,7 +315,7 @@ suite('data cache', function() {
         });
 
 
-        test('should be expired collection', function(done) {
+        it('should be expired collection', function(done) {
             // Making the data in the cache immediately outdated
             dataCache.timeout(-1);
             assert.equal(dataCache.timeout(-1), -1);
@@ -331,7 +331,7 @@ suite('data cache', function() {
         });
 
 
-        test('should be throw error ', function(done) {
+        it('should be throw error ', function(done) {
             // todo have error when collection name == null
             // stored data without name
             //assert.throws(dataCache.store(null, AREAS), 'name cannot be null');
@@ -345,11 +345,11 @@ suite('data cache', function() {
     });
 
 
-    suite('should be permanent store collection to the cache', function() {
+    describe('should be permanent store collection to the cache', function() {
         var someData = 'GOALS',
             storedData = null;
 
-        test('should be read permanent collection', function(done) {
+        it('should be read permanent collection', function(done) {
             // Making the data in the cache immediately outdated
             dataCache.timeout(-1);
             assert.equal(dataCache.timeout(-1), -1);
@@ -364,7 +364,7 @@ suite('data cache', function() {
             done();
         });
 
-        test('should be throw error ', function(done) {
+        it('should be throw error ', function(done) {
             // todo have error when collection name == null
             // stored data without name
             //assert.throws(dataCache.storePermanent(null, AREAS), 'name cannot be null');
@@ -374,11 +374,11 @@ suite('data cache', function() {
 
     });
 
-    suite('should be remove collection to the cache', function() {
+    describe('should be remove collection to the cache', function() {
         var someData = 'GOALS',
             storedData = null;
 
-        test('should be remove stored collection', function(done) {
+        it('should be remove stored collection', function(done) {
             // Making the data in the cache immediately outdated
             // save collection
             dataCache.store(someData, GOALS);
@@ -394,7 +394,7 @@ suite('data cache', function() {
             done();
         });
 
-        test('should be remove stored permanent collection', function(done) {
+        it('should be remove stored permanent collection', function(done) {
             // Making the data in the cache immediately outdated
             // save collection
             dataCache.storePermanent(someData, GOALS);
@@ -412,7 +412,7 @@ suite('data cache', function() {
             done();
         });
 
-        test('should be throw error ', function(done) {
+        it('should be throw error ', function(done) {
             // todo have error when collection name == null
             // stored data without name
             //assert.throws(dataCache.storePermanent(null, AREAS), 'name cannot be null');
@@ -422,20 +422,20 @@ suite('data cache', function() {
 
     });
 
-    suite('should be retrieve data from the cache, otherwise load it from server', function() {
+    describe('should be retrieve data from the cache, otherwise load it from server', function() {
         var someData = 'goals',
             storedData = null,
             sandbox;
 
-        suiteSetup(function() {
+        beforeEach(function() {
             sandbox = sinon.sandbox.create();
         });
 
-        suiteTeardown(function() {
+        afterEach(function() {
             sandbox.restore();
         });
 
-        test('should be retrieve data from cache without filter', function(done) {
+        it('should be retrieve data from cache without filter', function(done) {
             var successCallback = sinon.spy(),
                 result;
 
@@ -455,7 +455,7 @@ suite('data cache', function() {
             done();
         });
 
-        test('should be retrieve data from cache with filter', function(done) {
+        it('should be retrieve data from cache with filter', function(done) {
             var successCallback = sinon.spy(),
                 result;
 
@@ -477,7 +477,7 @@ suite('data cache', function() {
             done();
         });
 
-        test('should be retrieve empty data from cache with filter', function(done) {
+        it('should be retrieve empty data from cache with filter', function(done) {
             var successCallback = sinon.spy(),
                 result;
 
@@ -499,7 +499,7 @@ suite('data cache', function() {
             done();
         });
 
-        test('should be retrieve data from server, when the data is not in cache (!singleResult operation). ', function(done) {
+        it('should be retrieve data from server, when the data is not in cache (!singleResult operation). ', function(done) {
             resetCache(dataCache);
             var dataFromServer = [],
                 result,
@@ -535,7 +535,7 @@ suite('data cache', function() {
             done();
         });
 
-        test('should be retrieve data from server, when force is true (!singleResult operation).', function(done) {
+        it('should be retrieve data from server, when force is true (!singleResult operation).', function(done) {
             resetCache(dataCache);
             var dataFromServer = [],
                 result,
@@ -572,7 +572,7 @@ suite('data cache', function() {
 
         // todo add test for (singleResult operation).
 
-        test('should be throw error ', function(done) {
+        it('should be throw error ', function(done) {
             // todo have error when collection name == null
             // stored data without name
             //assert.throws(dataCache.storePermanent(null, AREAS), 'name cannot be null');
@@ -582,13 +582,13 @@ suite('data cache', function() {
 
     });
 
-    suite('should be add Item to the cache', function() {
+    describe('should be add Item to the cache', function() {
         var someData = 'GOALS',
             storedData = null,
             item,
             collection;
 
-        test('should be add new Item to not empty nameSpace', function(done) {
+        it('should be add new Item to not empty nameSpace', function(done) {
             resetCache(dataCache);
             // prepare testing data
             item = GOAL_ITEM;
@@ -607,7 +607,7 @@ suite('data cache', function() {
             done();
         });
 
-        test('should be add new Item to the empty nameSpace', function(done) {
+        it('should be add new Item to the empty nameSpace', function(done) {
             resetCache(dataCache);
             // prepare testing data
             item = GOAL_ITEM;
@@ -624,7 +624,7 @@ suite('data cache', function() {
             done();
         });
 
-        test('should be add exist Item', function(done) {
+        it('should be add exist Item', function(done) {
             resetCache(dataCache);
             // prepare testing data
             item = GOAL_ITEM;
@@ -644,7 +644,7 @@ suite('data cache', function() {
             done();
         });
 
-        test('should be throw error ', function(done) {
+        it('should be throw error ', function(done) {
             // todo have error when collection name == null
             // stored data without name
             //assert.throws(dataCache.storePermanent(null, AREAS), 'name cannot be null');
@@ -654,13 +654,13 @@ suite('data cache', function() {
 
     });
 
-    suite('should be update Item in the cache', function() {
+    describe('should be update Item in the cache', function() {
         var someData = 'GOALS',
             storedData = null,
             item,
             collection;
 
-        test('should be update Item in not empty nameSpace', function(done) {
+        it('should be update Item in not empty nameSpace', function(done) {
             resetCache(dataCache);
             // prepare testing data
             item = _.cloneDeep(GOAL_ITEM);
@@ -684,7 +684,7 @@ suite('data cache', function() {
             done();
         });
 
-        test('should be updated non existing Item in not empty nameSpace', function(done) {
+        it('should be updated non existing Item in not empty nameSpace', function(done) {
             resetCache(dataCache);
             // prepare testing data
             item = _.cloneDeep(GOAL_ITEM);
@@ -710,7 +710,7 @@ suite('data cache', function() {
             done();
         });
 
-        test('should be update Item in empty nameSpace', function(done) {
+        it('should be update Item in empty nameSpace', function(done) {
             resetCache(dataCache);
             // prepare testing data
             item = GOAL_ITEM;
@@ -727,7 +727,7 @@ suite('data cache', function() {
             done();
         });
 
-        test('should be throw error ', function(done) {
+        it('should be throw error ', function(done) {
             // todo have error when collection name == null
             // stored data without name
             //assert.throws(dataCache.storePermanent(null, AREAS), 'name cannot be null');
@@ -737,13 +737,13 @@ suite('data cache', function() {
 
     });
 
-    suite('should be remove Item from the cache', function() {
+    describe('should be remove Item from the cache', function() {
         var someData = 'GOALS',
             storedData = null,
             item,
             collection;
 
-        test('should be remove existing Item from nameSpace', function(done) {
+        it('should be remove existing Item from nameSpace', function(done) {
             resetCache(dataCache);
             // prepare testing data
             item = _.cloneDeep(GOAL_ITEM);
@@ -766,7 +766,7 @@ suite('data cache', function() {
             done();
         });
 
-        test('should be remove non existing Item from nameSpace', function(done) {
+        it('should be remove non existing Item from nameSpace', function(done) {
             resetCache(dataCache);
             // prepare testing data
             item = _.cloneDeep(GOAL_ITEM);
@@ -788,7 +788,7 @@ suite('data cache', function() {
             done();
         });
 
-        test('should be remove Item from non existing nameSpace', function(done) {
+        it('should be remove Item from non existing nameSpace', function(done) {
             resetCache(dataCache);
             // prepare testing data
             item = _.cloneDeep(GOAL_ITEM);
@@ -803,7 +803,7 @@ suite('data cache', function() {
             done();
         });
 
-        test('should be throw error ', function(done) {
+        it('should be throw error ', function(done) {
             // todo have error when collection name == null
             // stored data without name
             //assert.throws(dataCache.storePermanent(null, AREAS), 'name cannot be null');

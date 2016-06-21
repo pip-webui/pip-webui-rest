@@ -1,13 +1,13 @@
 'use strict';
 
-suite('pipRest httpBackend query', function() {
+describe('pipRest httpBackend query', function() {
     var serverUrl = 'http://alpha.pipservices.net';
 
     var $httpBackend,
         requestHandler,
         pipRest;
 
-    suiteSetup(function() {
+    beforeEach(function() {
         module('pipRest.State');
 
         inject(function ($injector, _pipRest_) {
@@ -17,12 +17,12 @@ suite('pipRest httpBackend query', function() {
 
     });
 
-    suiteTeardown(function() {
+    afterEach(function() {
         $httpBackend.verifyNoOutstandingExpectation();
         $httpBackend.verifyNoOutstandingRequest();
     });
 
-    test('Signin should be return user', function(done) {
+    it('Signin should be return user', function(done) {
         requestHandler = $httpBackend.when('POST', serverUrl + '/api/signin')
             .respond({name: "Boy", email: 'stas@test.ru' , language: "en", pwd_fail_count: 0, pwd_last_fail: null});
 

@@ -1,9 +1,9 @@
 'use strict';
 
-suite('pipAuthState', function () {
+describe('pipAuthState', function () {
     var pipAuthState, $httpProviderIt, $httpBackend;
 
-    setup(function() {
+    beforeEach(function() {
         module('pipRest.State', function($httpProvider) {
             $httpProviderIt = $httpProvider;
         });
@@ -14,14 +14,14 @@ suite('pipAuthState', function () {
         });
     });
 
-    test('should add interceptor', function(done) {
+    it('should add interceptor', function(done) {
         assert.isDefined($httpProviderIt.interceptors);
         assert.isTrue($httpProviderIt.interceptors.indexOf('pipAuthHttpResponseInterceptor') > -1);
 
         done();
     });
 
-    test('should have pipAuthState be defined', function(done) {
+    it('should have pipAuthState be defined', function(done) {
         assert.isDefined(pipAuthState);
 
         done();
@@ -29,14 +29,14 @@ suite('pipAuthState', function () {
 
 });
 
-suite('$on event functions', function() {
+describe('$on event functions', function() {
     var $rootScope,
         pipState,
         pipSession,
         pipAuthState;
     var sandbox;
 
-    setup(function() {
+    beforeEach(function() {
         module('pipRest.State');
 
         inject(function (_pipState_, _$rootScope_, _pipSession_, _pipAuthState_) {
@@ -48,15 +48,15 @@ suite('$on event functions', function() {
 
     });
 
-    suiteSetup(function() {
+    beforeEach(function() {
         sandbox = sinon.sandbox.create();
     });
 
-    suiteTeardown(function() {
+    afterEach(function() {
         sandbox.restore();
     });
 
-    test('should be go to signin when unauthorized redirect', function(done) {
+    it('should be go to signin when unauthorized redirect', function(done) {
         sandbox.stub(pipSession, "close");
         sandbox.stub(pipAuthState, "goToSignin");
 
@@ -68,7 +68,7 @@ suite('$on event functions', function() {
         done();
     });
 
-    //test('should be redirect on $stateChangeStart ', function(done) {
+    //it('should be redirect on $stateChangeStart ', function(done) {
     //    sandbox.stub(pipAuthState, "redirect").returns(true);
     //    sandbox.stub(pipSession, "opened");
     //
@@ -82,13 +82,13 @@ suite('$on event functions', function() {
 
 });
 
-suite('pipAuthHttpResponseInterceptor', function() {
+describe('pipAuthHttpResponseInterceptor', function() {
     var AuthInterceptor,
         $rootScope,
         $q,
         $location;
 
-    setup(function() {
+    beforeEach(function() {
         module('pipRest.State');
 
         inject(function (pipAuthHttpResponseInterceptor, _$rootScope_, _$q_, _$location_) {
@@ -99,7 +99,7 @@ suite('pipAuthHttpResponseInterceptor', function() {
         });
     });
 
-    test('should be defined functions', function(done) {
+    it('should be defined functions', function(done) {
         assert.isDefined(AuthInterceptor.response);
         assert.isFunction(AuthInterceptor.response);
 

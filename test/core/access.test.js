@@ -1,6 +1,6 @@
 'use strict';
 
-suite('pipAccess', function () {
+describe('pipAccess', function () {
     var
         pipEnums, pipAccess, 
         ACCOUNT1 = {
@@ -27,17 +27,17 @@ suite('pipAccess', function () {
             name: 'User 3'
         };
 
-    setup(module('ui.router'));
-    setup(module('pipRest.Enums'));
-    setup(module('pipRest.Access'));
+    beforeEach(module('ui.router'));
+    beforeEach(module('pipRest.Enums'));
+    beforeEach(module('pipRest.Access'));
 
-    setup(inject(function($injector) {
+    beforeEach(inject(function($injector) {
        pipEnums = $injector.get('pipEnums');
        pipAccess = $injector.get('pipAccess');       
     }));
 
 
-    test('define owner access', function (done) {
+    it('define owner access', function (done) {
         var user1 = pipAccess.asOwner(ACCOUNT1);
 
         assert.equal(user1.id, ACCOUNT1._id);
@@ -55,7 +55,7 @@ suite('pipAccess', function () {
         done();
     });
 
-    test('define party access', function (done) {
+    it('define party access', function (done) {
         var user1 = pipAccess.toParty(ACCOUNT1, ACCOUNT2);
 
         assert.equal(user1.id, ACCOUNT1._id);
@@ -73,7 +73,7 @@ suite('pipAccess', function () {
         done();
     });
 
-    test('override access', function (done) {
+    it('override access', function (done) {
         var user1 = pipAccess.override(
             ACCOUNT1, 
             {
@@ -100,7 +100,7 @@ suite('pipAccess', function () {
         done();
     });
 
-    test('define party access with override', function (done) {
+    it('define party access with override', function (done) {
         var user1 = pipAccess.toPartyWithOverride(ACCOUNT1, ACCOUNT2, {
             party: ACCOUNT3,
             owner: false,

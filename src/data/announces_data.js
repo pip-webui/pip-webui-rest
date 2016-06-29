@@ -8,7 +8,7 @@
 (function () {
     'use strict';
 
-    var thisModule = angular.module('pipAnnouncesData', ['pipRest', 'pipDataModel']);
+    var thisModule = angular.module('pipAnnouncesData', ['pipRest', 'pipDataModel', 'pipAnnouncesCache']);
 
     thisModule.provider('pipAnnouncesData', function () {
 
@@ -37,9 +37,17 @@
         };
 
         // CRUD operations and other business methods
-        this.$get = function (pipRest, $stateParams, pipDataModel) {
+        this.$get = function (pipRest, $stateParams, pipDataModel, pipAnnouncesCache) {
             return {
                 partyId: pipRest.partyId,
+                readAnnounces: function (params, successCallback, errorCallback) {
+                    params.resource = 'announces';
+                    params.item = params.item || {};
+                    params.item.search = $stateParams.search;
+                    params.item.tags = $stateParams.search;
+                    params.item.party_id = pipRest.partyId($stateParams);
+                    return pipAnnouncesCache.readAnnounces(params, successCallback, errorCallback);
+                },
 
                 updateAnnounce: function (params, successCallback, errorCallback) {
                     params.resource = 'announces';
@@ -47,7 +55,7 @@
                     params.skipTransactionEnd = false;
                     pipDataModel.update(
                         params,
-                        successCallback,
+                        pipAnnouncesCache.onAnnounceCreate(params, successCallback),
                         errorCallback
                     );
                 },
@@ -60,7 +68,7 @@
                         params.skipTransactionEnd = false;
                         pipDataModel.update(
                             params,
-                            successCallback,
+                            pipAnnouncesCache.onAnnounceUpdate(params, successCallback),
                             errorCallback
                         );
                     });
@@ -74,7 +82,7 @@
                         params.skipTransactionEnd = false;
                         pipDataModel.create(
                             params,
-                            successCallback,
+                            pipAnnouncesCache.onAnnounceCreate(params, successCallback),
                             errorCallback
                         );
                     });
@@ -86,14 +94,14 @@
                     params.skipTransactionEnd = false;
                     pipDataModel.create(
                         params,
-                        successCallback,
+                        pipAnnouncesCache.onAnnounceCreate(params, successCallback),
                         errorCallback
                     );
                 },
 
                 deleteAnnounce: function(params, successCallback, errorCallback) {
                     params.resource = 'announces';
-                    pipDataModel.remove(params, successCallback, errorCallback);
+                    pipDataModel.remove(params, pipAnnouncesCache.onAnnounceDelete(params, successCallback), errorCallback);
                 }
             }
         };

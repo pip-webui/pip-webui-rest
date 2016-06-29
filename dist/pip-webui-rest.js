@@ -1,4 +1,58 @@
 /**
+ * @file Announces data cache
+ * @copyright Digital Living Software Corp. 2014-2016
+ */
+
+/* global angular */
+
+(function () {
+    'use strict';
+
+    var thisModule = angular.module('pipAnnouncesCache', ['pipAnnouncesData']);
+
+    thisModule.service('pipAnnouncesCache',
+        ['pipEnums', 'pipDataCache', 'pipTagsCache', function (pipEnums, pipDataCache, pipTagsCache) {
+
+            return {
+                readAnnounces: readAnnounces,
+                onAnnounceCreate: onAnnounceCreate,
+                onAnnounceUpdate: onAnnounceUpdate,
+                onAnnounceDelete: onAnnounceDelete                
+            };
+
+            function readAnnounces(params, successCallback, errorCallback) {
+                params = params || {};
+                params.resource = 'announces';
+                params.item = params.item || {};
+
+                return pipDataCache.retrieveOrLoad(params, successCallback, errorCallback);
+            }
+            
+            function onAnnounceCreate(params, successCallback) {
+                return pipDataCache.addDecorator(
+                    'announces', params,
+                    pipTagsCache.tagsUpdateDecorator(params, successCallback)
+                );
+            }
+
+            function onAnnounceUpdate(params, successCallback) {
+                return pipDataCache.updateDecorator(
+                    'announces', params,
+                    pipTagsCache.tagsUpdateDecorator(params, successCallback)
+                );
+            }
+
+            function onAnnounceDelete(params, successCallback) {
+                return pipDataCache.removeDecorator('announces', params, successCallback);
+            }
+                        
+        }]
+    );
+
+})();
+
+
+/**
  * @file Global application data cache
  * @copyright Digital Living Software Corp. 2014-2016
  */
@@ -2234,7 +2288,7 @@
 (function () {
     'use strict';
 
-    var thisModule = angular.module('pipAnnouncesData', ['pipRest', 'pipDataModel']);
+    var thisModule = angular.module('pipAnnouncesData', ['pipRest', 'pipDataModel', 'pipAnnouncesCache']);
 
     thisModule.provider('pipAnnouncesData', function () {
 
@@ -2263,9 +2317,17 @@
         };
 
         // CRUD operations and other business methods
-        this.$get = ['pipRest', '$stateParams', 'pipDataModel', function (pipRest, $stateParams, pipDataModel) {
+        this.$get = ['pipRest', '$stateParams', 'pipDataModel', 'pipAnnouncesCache', function (pipRest, $stateParams, pipDataModel, pipAnnouncesCache) {
             return {
                 partyId: pipRest.partyId,
+                readAnnounces: function (params, successCallback, errorCallback) {
+                    params.resource = 'announces';
+                    params.item = params.item || {};
+                    params.item.search = $stateParams.search;
+                    params.item.tags = $stateParams.search;
+                    params.item.party_id = pipRest.partyId($stateParams);
+                    return pipAnnouncesCache.readAnnounces(params, successCallback, errorCallback);
+                },
 
                 updateAnnounce: function (params, successCallback, errorCallback) {
                     params.resource = 'announces';
@@ -2273,7 +2335,7 @@
                     params.skipTransactionEnd = false;
                     pipDataModel.update(
                         params,
-                        successCallback,
+                        pipAnnouncesCache.onAnnounceCreate(params, successCallback),
                         errorCallback
                     );
                 },
@@ -2286,7 +2348,7 @@
                         params.skipTransactionEnd = false;
                         pipDataModel.update(
                             params,
-                            successCallback,
+                            pipAnnouncesCache.onAnnounceUpdate(params, successCallback),
                             errorCallback
                         );
                     });
@@ -2300,7 +2362,7 @@
                         params.skipTransactionEnd = false;
                         pipDataModel.create(
                             params,
-                            successCallback,
+                            pipAnnouncesCache.onAnnounceCreate(params, successCallback),
                             errorCallback
                         );
                     });
@@ -2312,14 +2374,14 @@
                     params.skipTransactionEnd = false;
                     pipDataModel.create(
                         params,
-                        successCallback,
+                        pipAnnouncesCache.onAnnounceCreate(params, successCallback),
                         errorCallback
                     );
                 },
 
                 deleteAnnounce: function(params, successCallback, errorCallback) {
                     params.resource = 'announces';
-                    pipDataModel.remove(params, successCallback, errorCallback);
+                    pipDataModel.remove(params, pipAnnouncesCache.onAnnounceDelete(params, successCallback), errorCallback);
                 }
             }
         }];

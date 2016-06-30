@@ -1,5 +1,3 @@
-'use strict';
-
 //var
 //    data_set = require('../test/data_set.test.js');
 
@@ -591,6 +589,7 @@ describe('data cache', function () {
 
             // check updated item
             var updatedItem = _.find(storedData, {id: item.id});
+
             expect(updatedItem).to.be.not.null;
             expect(updatedItem.title).to.equal('1');
         });
@@ -615,6 +614,7 @@ describe('data cache', function () {
 
             // check updated item
             var updatedItem = _.find(storedData, {id: item.id});
+
             expect(updatedItem).to.be.not.null;
             expect(updatedItem.title).to.equal('1');
         });

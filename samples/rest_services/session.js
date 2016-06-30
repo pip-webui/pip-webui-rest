@@ -6,7 +6,7 @@
     var thisModule = angular.module('appRestServices.Session', []);
 
     thisModule.controller('SessionController',
-        function($scope, $rootScope, pipRest, pipSession, pipTestAccount) {
+        function ($scope, $rootScope, pipRest, pipSession, pipTestAccount) {
 
             $scope.serverUrl = pipTestAccount.getServerUrl();
             $scope.sampleAccount = pipTestAccount.getSamplerAccount();
@@ -15,9 +15,10 @@
 
             $scope.signIn = signIn;
             $scope.signOut = signOut;
-            $scope.userState = pipSession.opened() ? 'SignIn': 'SignOut';
+            $scope.userState = pipSession.opened() ? 'SignIn' : 'SignOut';
 
-            return ;
+            return;
+            // -----------------------------------------------------------------------------------------------------
 
             function signIn() {
                 $scope.processing = true;
@@ -28,26 +29,26 @@
                         email: $scope.sampleAccount.email,
                         password: $scope.sampleAccount.password
                     },
-                    function(user) {
+                    function (user) {
                         $scope.processing = false;
                     },
-                    function(error) {
-                        console.log(error);
+                    function (/* error*/) {
+                        // console.log(error);
                         $scope.processing = false;
                     }
                 );
-            };
+            }
 
             function signOut() {
                 $scope.processing = true;
 
                 pipSession.signout(
-                    function(error) {
-                        console.log(error);
+                    function (/* error*/) {
+                        // console.log(error);
                         $scope.processing = false;
                     }
                 );
-            };
+            }
         }
     );
 

@@ -1,12 +1,10 @@
-/* global angular */
-
-(function () {
+(function (angular) {
     'use strict';
 
     var thisModule = angular.module('appRestServices.Auth', ['pipTranslate', 'pipRest']);
 
     thisModule.config(
-        function(pipTranslateProvider, pipAuthStateProvider) {
+        function (pipTranslateProvider, pipAuthStateProvider) {
 
             // Configure module routes
             pipAuthStateProvider
@@ -38,13 +36,9 @@
                 });
 
             // Set translation strings for the module
-            pipTranslateProvider.translations('en', {
+            pipTranslateProvider.translations('en', {});
 
-            });
-
-            pipTranslateProvider.translations('ru', {
-
-            });
+            pipTranslateProvider.translations('ru', {});
 
             pipAuthStateProvider.unauthorizedState('signin');
             pipAuthStateProvider.authorizedState('auth');
@@ -53,24 +47,24 @@
         }
     );
 
-
     thisModule.controller('AuthController',
-        function($scope, $rootScope, pipRest, pipSession) {
+        function ($scope, $rootScope, pipRest, pipSession) {
 
-            $scope.page = "Auth Controller";
+            $scope.page = 'Auth Controller';
             $scope.processing = false;
 
             $scope.signOut = signOut;
-            $scope.userState = pipSession.opened() ? 'SignIn': 'SignOut';
+            $scope.userState = pipSession.opened() ? 'SignIn' : 'SignOut';
 
             return;
+            // ----------------------------------------------------------------------------------------------------
 
             function signOut() {
                 $scope.processing = true;
 
                 pipSession.signout(
-                    function(error) {
-                        console.log(error);
+                    function (/* error*/) {
+                        // console.warn(error);
                         $scope.processing = false;
                     }
                 );
@@ -80,9 +74,9 @@
     );
 
     thisModule.controller('SigninController',
-        function($scope, $rootScope, pipRest, pipSession, pipTestAccount, pipAuthState, $state) {
+        function ($scope, $rootScope, pipRest, pipSession, pipTestAccount, pipAuthState, $state) {
 
-            $scope.page = "Signin Controller";
+            $scope.page = 'Signin Controller';
             $scope.processing = false;
 
             $scope.serverUrl = pipTestAccount.getServerUrl();
@@ -91,9 +85,10 @@
             $scope.processing = false;
 
             $scope.signIn = signIn;
-            $scope.userState = pipSession.opened() ? 'SignIn': 'SignOut';
+            $scope.userState = pipSession.opened() ? 'SignIn' : 'SignOut';
 
             return;
+            // -------------------------------------------------------------------------------------------------
 
             function signIn() {
                 $scope.processing = true;
@@ -104,17 +99,16 @@
                         email: $scope.sampleAccount.email,
                         password: $scope.sampleAccount.password
                     },
-                    function(user) {
+                    function (user) {
                         $scope.processing = false;
                         if (pipAuthState.params.toState) {
                             $state.go(pipAuthState.params.toState, pipAuthState.params.toParams);
                         } else {
-                            // Todo: This hack shall not be here!! Remove it
                             pipAuthState.goToAuthorized();
                         }
                     },
-                    function(error) {
-                        console.log(error);
+                    function (/* error*/) {
+                        // console.log(error);
                         $scope.processing = false;
                     }
                 );
@@ -124,21 +118,16 @@
     );
 
     thisModule.controller('FirstAuthController',
-        function($scope, $state) {
+        function ($scope) {
 
-            $scope.page = "First Auth Controller";
+            $scope.page = 'First Auth Controller';
             $scope.processing = false;
-
-            return;
-
         }
     );
-
-
     thisModule.controller('SecondAuthController',
-        function($scope, $state, $rootScope, pipRest, pipSession) {
+        function ($scope, $state, $rootScope, pipRest, pipSession) {
 
-            $scope.page = "Second Auth Controller";
+            $scope.page = 'Second Auth Controller';
             $scope.processing = false;
 
             $scope.expired = expired;
@@ -146,12 +135,13 @@
             $scope.onGetNotes = onGetNotes;
 
             return;
+            // ---------------------------------------------------------------------------------------------------
 
             function expired() {
                 $scope.processing = true;
                 pipSession.signout(
-                    function(error) {
-                        console.log(error);
+                    function (/* error*/) {
+                        // console.log(error);
                         $scope.processing = false;
                     }
                 );
@@ -169,11 +159,11 @@
                     {
                         party_id: pipRest.userId()
                     },
-                    function(notes) {
+                    function (notes) {
                         $scope.processing = false;
                     },
-                    function (error) {
-                        console.log(error);
+                    function (/* error*/) {
+                        // console.log(error);
                         $scope.processing = false;
                     }
                 );
@@ -182,5 +172,4 @@
         }
     );
 
-
-})();
+})(window.angular);

@@ -229,15 +229,15 @@
 
                 // Load data from server
                 if (params.item.paging == 1) {
-                    console.log('paging params', params)
+                    // console.log('paging params', params)
                     pipDataModel['page'](
                         params,
                         function (data) {
-                            data = data.data;
-                            console.log('data', data)
+                            // data = data.data;
+                            // console.log('data', data)
                             // Store data in cache and return
-                            store(name, data, params);
-                            if (filter) data = filter(data);
+                            store(name, data.data, params);
+                            if (filter) data.data = filter(data.data);
                             deferred.resolve(data);
 
                             console.log('***** Loaded from server ' + name, data);

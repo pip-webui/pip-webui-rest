@@ -41,7 +41,7 @@
                 var filteredData = {};
 
                 // Filter only the generic parameters that can be relevant to the query
-                if(data != null) {
+                if (data != null) {
                     filteredData.item = data.item;
                     filteredData.party_id = data.party_id;
                     filteredData.search = data.search;
@@ -174,27 +174,52 @@
                 }
 
                 // Load data from server
-                pipDataModel[params.singleResult ? 'readOne' : 'read'](
-                    params,
-                    function (data) {
-                        // Store data in cache and return
-                        params.singleResult ?
-                            updateItem(name, data, params) :
+                if (params.item.paging == 1) {
+                    // console.log('paging params', params)
+                    pipDataModel['page'](
+                        params,
+                        function (data) {
+                            data = data.data;
+                            // console.log('data', data)
+                            // Store data in cache and return
                             store(name, data, params);
-                        if (filter) data = filter(data);
-                        deferred.resolve(data);
+                            if (filter) data = filter(data);
+                            deferred.resolve(data);
 
-                        console.log('***** Loaded from server ' + name, data);
+                            console.log('***** Loaded from server ' + name, data);
 
-                        if (successCallback) successCallback(data);
-                    },
-                    function (err) {
-                        // Return error
-                        console.log('***** FAILED to load from server ' + name);
-                        deferred.reject(err);
-                        if (errorCallback) errorCallback(err);
-                    }
-                );
+                            if (successCallback) successCallback(data);
+                        },
+                        function (err) {
+                            // Return error
+                            console.log('***** FAILED to load from server ' + name);
+                            deferred.reject(err);
+                            if (errorCallback) errorCallback(err);
+                        }
+                    );
+                } else {
+                    pipDataModel[params.singleResult ? 'readOne' : 'read'](
+                        params,
+                        function (data) {
+                            // Store data in cache and return
+                            params.singleResult ?
+                                updateItem(name, data, params) :
+                                store(name, data, params);
+                            if (filter) data = filter(data);
+                            deferred.resolve(data);
+
+                            // console.log('***** Loaded from server ' + name, data);
+
+                            if (successCallback) successCallback(data);
+                        },
+                        function (err) {
+                            // Return error
+                            console.log('***** FAILED to load from server ' + name);
+                            deferred.reject(err);
+                            if (errorCallback) errorCallback(err);
+                        }
+                    );
+                }
 
                 // Return deferred object
                 return deferred.promise;

@@ -167,7 +167,7 @@
                 // Return result if it exists
                 if (result) {
                     console.log('***** Loaded from cache ' + name, result);
-                    if (filter) result = filter(result);
+                    if (filter) result.data = filter(result.data);
                     if (successCallback) successCallback(result);
                     deferred.resolve(result);
                     return deferred.promise;
@@ -182,7 +182,7 @@
                             // data = data.data;
                             // console.log('data', data)
                             // Store data in cache and return
-                            store(name, data.data, params);
+                            store(name, data, params);
                             if (filter) data.data = filter(data.data);
                             deferred.resolve(data);
 
@@ -208,7 +208,7 @@
                             if (filter) data = filter(data);
                             deferred.resolve(data);
 
-                            // console.log('***** Loaded from server ' + name, data);
+                            console.log('***** Loaded from server ' + name, data);
 
                             if (successCallback) successCallback(data);
                         },

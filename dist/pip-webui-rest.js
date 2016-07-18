@@ -221,7 +221,13 @@
                 // Return result if it exists
                 if (result) {
                     console.log('***** Loaded from cache ' + name, result);
-                    if (filter) result.data = filter(result.data);
+                    if (filter) {
+                        if (result.data) {
+                            result.data = filter(result.data);
+                        } else {
+                            result = filter(result);
+                        }
+                    }
                     if (successCallback) successCallback(result);
                     deferred.resolve(result);
                     return deferred.promise;

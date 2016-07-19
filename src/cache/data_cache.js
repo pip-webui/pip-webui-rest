@@ -71,11 +71,9 @@
             function clear(name) {
                 if (name == null) {
                     cache = {};
-                    console.log('****** Invalidated cache');
                 } else {
                     for (var key in cache) {
                         if (key == name || key.startsWith(name + '_')) {
-                            console.log('****** Invalidated cache ' + key);
                             delete cache[key];
                         }
                     }
@@ -166,7 +164,6 @@
 
                 // Return result if it exists
                 if (result) {
-                    console.log('***** Loaded from cache ' + name, result);
                     if (filter) {
                         if (result.data) {
                             result.data = filter(result.data);
@@ -181,24 +178,18 @@
 
                 // Load data from server
                 if (params.item.paging == 1) {
-                    // console.log('paging params', params)
                     pipDataModel['page'](
                         params,
                         function (data) {
-                            // data = data.data;
-                            // console.log('data', data)
                             // Store data in cache and return
                             store(name, data, params);
                             if (filter) data.data = filter(data.data);
                             deferred.resolve(data);
 
-                            console.log('***** Loaded from server ' + name, data);
-
                             if (successCallback) successCallback(data);
                         },
                         function (err) {
                             // Return error
-                            console.log('***** FAILED to load from server ' + name);
                             deferred.reject(err);
                             if (errorCallback) errorCallback(err);
                         }
@@ -214,13 +205,10 @@
                             if (filter) data = filter(data);
                             deferred.resolve(data);
 
-                            console.log('***** Loaded from server ' + name, data);
-
                             if (successCallback) successCallback(data);
                         },
                         function (err) {
                             // Return error
-                            console.log('***** FAILED to load from server ' + name);
                             deferred.reject(err);
                             if (errorCallback) errorCallback(err);
                         }

@@ -1,20 +1,18 @@
-<div layout="column" layout-fill layout-align="start start" ng-controller="CacheController">
-
+<div class="layout-column layout-fill layout-align-start-start" ng-controller="CacheController">
     <h2 class="bm0">Cache</h2>
 
-
-    <md-card layout="column" class="md-card-sample" flex ng-controller="SettingsCacheController">
+    <md-card class="md-card-sample layout-column flex" ng-controller="SettingsCacheController">
         <md-progress-linear md-mode="indeterminate" class="top" ng-show="processing">
         </md-progress-linear>
 
         <md-card-content >
             <h3 class="bm0">Settings Cache: {{titleArray[titleIndex]}}</h3>
-            <div flex class="sample-output p8">
+            <div class="flex sample-output p8">
                 <pre>{{ showedObject | json:4 }}</pre>
             </div>
         </md-card-content>
         <md-card-actions >
-            <div layout="row" layout-align="end center" class="bm16">
+            <div class="bm16 layout-row layout-align-end-center">
                 <md-button class="md-raised md-primary"
                            ng-disabled="processing"
                            ng-click="clearSettingsCache()">
@@ -46,7 +44,7 @@
                     S2 to cache
                 </md-button>
             </div>
-            <div layout="row" layout-align="end center">
+            <div class="layout-row layout-align-end-center">
                 <md-button class="md-raised md-primary"
                            ng-disabled="processing"
                            ng-click="loadSettingsCache()">

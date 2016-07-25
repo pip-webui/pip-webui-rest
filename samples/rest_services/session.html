@@ -1,21 +1,18 @@
-<div layout="column" layout-fill layout-align="start start" ng-controller="SessionController">
-
+<div class="layout-column layout-fill layout-align-start-start" ng-controller="SessionController">
     <h2 class="bm0">Session</h2>
 
-
-
-    <md-card layout="column" class="md-card-sample" flex>
+    <md-card class="md-card-sample flex layout-column">
         <md-progress-linear md-mode="indeterminate" class="top" ng-show="processing">
         </md-progress-linear>
 
         <md-card-content >
             <h3 class="bm0">User: {{$user.name ? $user.name : 'No user logining'}}</h3>
-            <div flex class="sample-output p8">
+            <div class="flex sample-output p8">
                 <pre>{{ showedObject | json:4 }}</pre>
             </div>
         </md-card-content>
         <md-card-actions >
-            <div layout="row" layout-align="end center">
+            <div class="layout-row layout-align-end-center">
                 <md-button class="md-raised md-primary"
                            ng-disabled="processing || $user.name"
                            ng-click="signIn()">

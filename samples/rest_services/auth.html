@@ -1,4 +1,4 @@
-<div layout="column" layout-fill layout-align="start start" >
+<div class="layout-column layout-fill layout-align-start-start" >
 
     <h2 class="bm0">Authentication {{page}}</h2>
 
@@ -23,8 +23,7 @@
         </md-button>
     </div>
 
-    <md-card layout="column" flex
-             class="md-card-sample"
+    <md-card class="md-card-sample layout-column flex"
              ng-controller="AuthController"
              ng-if="$state.name == 'auth'">
         <md-progress-linear md-mode="indeterminate" class="top" ng-show="processing">
@@ -32,12 +31,12 @@
 
         <md-card-content >
             <h3 class="bm0">User: {{$user.name ? $user.name : 'No user logining'}}</h3>
-            <div flex class="sample-output p8">
+            <div class="flex sample-output p8">
                 <pre>{{ showedObject | json:4 }}</pre>
             </div>
         </md-card-content>
         <md-card-actions >
-            <div layout="row" layout-align="end center">
+            <div class="layout-row layout-align-end-center">
                 <md-button class="md-raised md-primary"
                            ng-disabled="processing"
                            ng-click="signOut()">
@@ -52,14 +51,13 @@
         </md-card-actions>
     </md-card>
 
-    <md-card layout="column" flex
-             class="md-card-sample"
+    <md-card class="md-card-sample layout-column flex"
              ng-controller="SigninController"
              ng-if="$state.name == 'signin'">
         <md-progress-linear md-mode="indeterminate" class="top" ng-show="processing">
         </md-progress-linear>
 
-        <md-card-content layout="column" layout-align="center center">
+        <md-card-content class="layout-column layout-align-center-center">
             <h3 class="bm0">Server Url: {{serverUrl}}</h3>
             <h3 class="bm0">User Name: {{sampleAccount.name}}</h3>
             <h3 class="bm0">User Email: {{sampleAccount.email}}</h3>
@@ -71,8 +69,7 @@
         </md-card-content>
     </md-card>
 
-    <md-card layout="column"
-             class="md-card-sample" flex
+    <md-card class="md-card-sample flex layout-column"
              ng-controller="FirstAuthController"
              ng-if="$state.name == 'first_page'">
         <md-progress-linear md-mode="indeterminate" class="top" ng-show="processing">
@@ -80,7 +77,7 @@
 
         <md-card-content >
             <h3 class="bm0">User: {{$user.name ? $user.name : 'No user logining'}}</h3>
-            <div flex class="sample-output p8">
+            <div class="flex sample-output p8">
                 <pre>{{ showedObject | json:4 }}</pre>
             </div>
         </md-card-content>
@@ -100,8 +97,7 @@
         <!--</md-card-actions>-->
     </md-card>
 
-    <md-card layout="column"
-             class="md-card-sample" flex
+    <md-card class="md-card-sample flex layout-column"
              ng-controller="SecondAuthController"
              ng-if="$state.name == 'second_page'">
         <md-progress-linear md-mode="indeterminate" class="top" ng-show="processing">
@@ -109,12 +105,12 @@
 
         <md-card-content >
             <h3 class="bm0">User: {{$user.name ? $user.name : 'No user logining'}}</h3>
-            <div flex class="sample-output p8">
+            <div class="flex sample-output p8">
                 <pre>{{ showedObject | json:4 }}</pre>
             </div>
         </md-card-content>
         <md-card-actions >
-            <div layout="row" layout-align="end center">
+            <div class="layout-row layout-align-end-center">
                 <md-button class="md-raised md-primary"
                            ng-disabled="processing"
                            ng-click="expired()">

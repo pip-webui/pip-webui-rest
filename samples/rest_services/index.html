@@ -27,7 +27,7 @@
     <script src="cache.js"></script>
 </head>
 
-<body ng-app="appRestServices" ng-controller="AppController" layout="column">
+<body ng-app="appRestServices" ng-controller="AppController" class="layout-column">
     <md-toolbar>
         <div class="md-toolbar-tools">
             <md-button class="md-icon-button" aria-label="menu" 
@@ -38,9 +38,9 @@
         </div>
     </md-toolbar>
         
-    <div layout="row" flex>
-        <md-sidenav md-component-id="left" md-is-locked-open="$mdMedia('gt-sm')" 
-            layout="column" class="md-whiteframe-z2 md-sidenav-left">
+    <div class="layout-row flex">
+        <md-sidenav md-component-id="left" md-is-locked-open="$mdMedia('gt-sm')"
+                    class="md-whiteframe-z2 md-sidenav-left layout-column">
             <md-list>
                 <md-list-item ng-repeat="contentItem in content" 
                     ng-click="onSwitchPage(contentItem.state)"
@@ -50,7 +50,7 @@
             </md-list>
         </md-sidenav>
         
-        <md-content id="content" flex class="p16">
+        <md-content id="content" class="flex p16">
             <div ui-view></div>            
         </md-content>
     </div>

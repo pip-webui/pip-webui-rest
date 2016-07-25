@@ -95,7 +95,7 @@
                 var filteredData = {};
 
                 // Filter only the generic parameters that can be relevant to the query
-                if(data != null) {
+                if (data != null) {
                     filteredData.item = data.item;
                     filteredData.party_id = data.party_id;
                     filteredData.search = data.search;
@@ -125,11 +125,9 @@
             function clear(name) {
                 if (name == null) {
                     cache = {};
-                    console.log('****** Invalidated cache');
                 } else {
                     for (var key in cache) {
                         if (key == name || key.startsWith(name + '_')) {
-                            console.log('****** Invalidated cache ' + key);
                             delete cache[key];
                         }
                     }
@@ -220,35 +218,56 @@
 
                 // Return result if it exists
                 if (result) {
-                    console.log('***** Loaded from cache ' + name, result);
-                    if (filter) result = filter(result);
+                    if (filter) {
+                        if (result.data) {
+                            result.data = filter(result.data);
+                        } else {
+                            result = filter(result);
+                        }
+                    }
                     if (successCallback) successCallback(result);
                     deferred.resolve(result);
                     return deferred.promise;
                 }
 
                 // Load data from server
-                pipDataModel[params.singleResult ? 'readOne' : 'read'](
-                    params,
-                    function (data) {
-                        // Store data in cache and return
-                        params.singleResult ?
-                            updateItem(name, data, params) :
+                if (params.item.paging == 1) {
+                    pipDataModel['page'](
+                        params,
+                        function (data) {
+                            // Store data in cache and return
                             store(name, data, params);
-                        if (filter) data = filter(data);
-                        deferred.resolve(data);
+                            if (filter) data.data = filter(data.data);
+                            deferred.resolve(data);
 
-                        console.log('***** Loaded from server ' + name, data);
+                            if (successCallback) successCallback(data);
+                        },
+                        function (err) {
+                            // Return error
+                            deferred.reject(err);
+                            if (errorCallback) errorCallback(err);
+                        }
+                    );
+                } else {
+                    pipDataModel[params.singleResult ? 'readOne' : 'read'](
+                        params,
+                        function (data) {
+                            // Store data in cache and return
+                            params.singleResult ?
+                                updateItem(name, data, params) :
+                                store(name, data, params);
+                            if (filter) data = filter(data);
+                            deferred.resolve(data);
 
-                        if (successCallback) successCallback(data);
-                    },
-                    function (err) {
-                        // Return error
-                        console.log('***** FAILED to load from server ' + name);
-                        deferred.reject(err);
-                        if (errorCallback) errorCallback(err);
-                    }
-                );
+                            if (successCallback) successCallback(data);
+                        },
+                        function (err) {
+                            // Return error
+                            deferred.reject(err);
+                            if (errorCallback) errorCallback(err);
+                        }
+                    );
+                }
 
                 // Return deferred object
                 return deferred.promise;

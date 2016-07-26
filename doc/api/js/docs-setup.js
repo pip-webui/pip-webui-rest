@@ -10,9 +10,9 @@ NG_DOCS={
   "__options": {
     "startPage": "/api",
     "scripts": [
-      "js/angular.min.js",
-      "js/angular-animate.min.js",
-      "js/marked.js"
+      "https://cdnjs.cloudflare.com/ajax/libs/angular.js/1.3.20/angular.min.js",
+      "https://cdnjs.cloudflare.com/ajax/libs/marked/0.3.5/marked.js",
+      "https://cdnjs.cloudflare.com/ajax/libs/angular.js/1.3.20/angular-animate.min.js"
     ],
     "styles": [],
     "title": "API Reference",
@@ -22,17 +22,17 @@ NG_DOCS={
     "navContent": "",
     "navTemplateData": {},
     "loadDefaults": {
-      "angular": true,
-      "angularAnimate": true,
-      "marked": true
+      "angular": false,
+      "angularAnimate": false,
+      "marked": false
     }
   },
   "html5Mode": true,
   "editExample": true,
   "startPage": "/api",
   "scripts": [
-    "js/angular.min.js",
-    "js/angular-animate.min.js",
-    "js/marked.js"
+    "https://cdnjs.cloudflare.com/ajax/libs/angular.js/1.3.20/angular.min.js",
+    "https://cdnjs.cloudflare.com/ajax/libs/marked/0.3.5/marked.js",
+    "https://cdnjs.cloudflare.com/ajax/libs/angular.js/1.3.20/angular-animate.min.js"
   ]
 };

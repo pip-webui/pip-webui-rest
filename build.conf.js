@@ -11,6 +11,14 @@ module.exports = {
         lib: true,
         images: false
     },
+    file: {
+        import: [
+            '../pip-webui-test/dist/**/*',
+            '../pip-webui-lib/dist/**/*',
+            '../pip-webui-css/dist/**/*',
+            '../pip-webui-core/dist/**/*'
+        ]
+    },
     samples: {
         port: 8008,
         publish: {

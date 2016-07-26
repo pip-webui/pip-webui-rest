@@ -1,42 +1,41 @@
 {
-  "name": "pip-webui-rest",
-  "version": "1.0.1",
-  "author": "Digital Living Software Corp. <www.digitallivingsoftware.com>",
-  "description": "REST API to Pip.Services Platform",
-  "contributors": [
-    {
-      "name": "Sergey Seroukhov",
-      "email": "seroukhov@gmail.com"
+    "name": "pip-webui-rest",
+    "version": "1.0.0",
+    "author": "Digital Living Software Corp. <www.digitallivingsoftware.com>",
+    "description": "REST API to Pip.Services Platform",
+    "contributors": [
+        {
+            "name": "Sergey Seroukhov",
+            "email": "seroukhov@gmail.com"
+        },
+        {
+            "name": "Anastas Fonotov",
+            "email": "anastasf@gmail.com"
+        },
+        {
+            "name": "Mark Zontak",
+            "email": "mark@zontak.me"
+        }
+    ],
+    "keywords": [
+        "pip",
+        "webui",
+        "framework",
+        "controls",
+        "css",
+        "styles"
+    ],
+    "noAnalyze": true,
+    "license": "MIT",
+    "private": false,
+    "scripts": {
+        "build": "gulp build",
+        "lint": "gulp lint",
+        "samples": "gulp launch",
+        "test": "karma start"
     },
-    {
-      "name": "Anastas Fonotov",
-      "email": "anastasf@gmail.com"
-    },
-    {
-      "name": "Mark Zontak",
-      "email": "mark@zontak.me"
+    "dependencies": {},
+    "devDependencies": {
+        "pip-webui-tasks": "git+https://github.com/pip-webui/pip-webui-tasks.git"
     }
-  ],
-  "keywords": [
-    "pip",
-    "webui",
-    "framework",
-    "controls",
-    "css",
-    "styles"
-  ],
-  "noAnalyze": true,
-  "license": "Commercial",
-  "private": true,
-  "scripts": {
-    "build": "gulp build",
-    "lint": "gulp lint",
-    "samples": "gulp launch",
-    "test": "karma start"
-  },
-  "dependencies": {
-  },
-  "devDependencies": {
-    "pip-webui-tasks": "git+https://github.com/pip-webui/pip-webui-tasks.git"
-  }
 }

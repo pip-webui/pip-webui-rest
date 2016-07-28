@@ -1,15 +1,18 @@
-<a name="1.0.0"></a>
-### 1.0.0 (2015-11-20)
+# Pip.WebUI.Rest Changelog
 
-#### Features
-* **rest** Angular resources to call Pip.Services REST API
-* **session** Session management for Pip.Services REST API
-* **router** Routing service with authentication
-* **data** Data services with transaction, caching support
-* **cache** Data caching services
+## <a name="1.0.0"></a> 1.0.0 (2016-07-30)
 
-#### Breaking Changes
-* 
+Initial release with pluggable REST API, authentication and session support, data models and local cache.
 
-#### Bug Fixes
+### Features
+* **rest**: pluggable resources to call RESTful API
+* **session**: session management for RESTful API
+* **router**: routing service with authentication
+* **data**: data services with transaction, caching support
+* **cache**: data caching services
+
+### Breaking Changes
+No breaking changes in this version
+
+### Bug Fixes
 No fixes in this version 

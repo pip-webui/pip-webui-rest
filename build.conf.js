@@ -1,7 +1,7 @@
 module.exports = {
     module: {
         name: 'pipRest',
-        index: 'rest'
+        styles: 'rest'
     },
     build: {
         js: true,
@@ -9,14 +9,21 @@ module.exports = {
         html: false,
         css: false,
         lib: true,
-        images: false
+        images: false,
+        dist: false
     },
     file: {
-        import: [
+        lib: [
             '../pip-webui-test/dist/**/*',
             '../pip-webui-lib/dist/**/*',
             '../pip-webui-css/dist/**/*',
             '../pip-webui-core/dist/**/*'
         ]
+    },
+    samples: {
+        port: 8050,
+    },
+    api: {
+        port: 8051,
     }
 };

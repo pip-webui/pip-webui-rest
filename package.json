@@ -2,7 +2,7 @@
     "name": "pip-webui-rest",
     "version": "1.0.0",
     "author": "Digital Living Software Corp. <www.digitallivingsoftware.com>",
-    "description": "REST API to Pip.WebUI",
+    "description": "REST API and Data Models for Pip.WebUI",
     "contributors": [
         {
             "name": "Sergey Seroukhov",

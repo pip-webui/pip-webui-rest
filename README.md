@@ -1,96 +1,38 @@
-# Pip.WebUI Rest Services http://github.com/pip-webui/pip-webui-rest
+# <img src="https://github.com/pip-webui/pip-webui/blob/master/doc/Logo.png" alt="Pip.WebUI Logo" style="max-width:30%"> <br/> REST API
 
-Rest API 
+![](https://img.shields.io/badge/license-MIT-blue.svg)
 
-The module contains the following functionality:
+On order to provide rich patterns for Line-of-Business application Pip.WebUI framework have to rely on server-side functionality. This Pip.WebUI.Rest module is our first (and quite loosy) attempt to define REST API, that connected controls rely on.
+
+We understand, that demanding from framework users to implement specific REST API is not a good approach. So, in the next version, we'll address that issue and will implement an abstraction layer, that will let our users to plug their own data models.
 
 * Angular Resources to call REST API
-* Session Management Service
-* Secure Application Router
-* Data Services
-* Data Cache
+* Session management
+* Secure application routing
+* Data models and local cache
 
-In the version 1.0.0 the implementation was cleaned up and covered with unit tests.
+For more information please, visit [User's guide](doc/UsersGuide.md) and [REST protocol](doc/RestProtocol.md)
 
-Quick Links:
+## Learn more about the module
 
-* [Documentation](#documentation)
-* [Contributing](#contributing)
-* [Building](#building)
-* [Installing](#installing)
+- [User's guide](doc/UsersGuide.md)
+- [REST protocol](doc/RestProtocol.md)
+- [Online samples](http://webui.pipdevs.com/pip-webui-rest/index.html)
+- [API reference](http://webui-api.pipdevs.com/pip-webui-rest/index.html)
+- [Developer's guide](doc/DevelopersGuide.md)
+- [Changelog](CHANGELOG.md)
+- [Pip.WebUI project website](http://www.pipwebui.org)
+- [Pip.WebUI project wiki](https://github.com/pip-webui/pip-webui/wiki)
+- [Pip.WebUI discussion forum](https://groups.google.com/forum/#!forum/pip-webui)
+- [Pip.WebUI team blog](https://pip-webui.blogspot.com/)
 
-## <a name="documentation"></a> Online Documentation
+## <a name="dependencies"></a>Module dependencies
 
-- Visit [documentation](doc/index.md) page
-- Or build the project, launch and open samples; see [Building](#building) for details
-   
-## <a name="contributing"></a> Contributing
+* [pip-webui-lib](https://github.com/pip-webui/pip-webui-lib): angular, angular material and other 3rd party libraries
+* [pip-webui-css](https://github.com/pip-webui/pip-webui-css): CSS styles and web components
+* [pip-webui-core](https://github.com/pip-webui/pip-webui-core): localization and other core services
 
-Developers interested in contributing should read the following guidelines:
+## <a name="license"></a>License
 
-- [Issue Guidelines](docs/guides/CONTRIBUTING.md#submit)
-- [Contributing Guidelines](docs/guides/CONTRIBUTING.md)
-- [Coding Guidelines](docs/guides/CODING.md)
-- [ChangeLog](CHANGELOG.md)
+This module is released under [MIT license](License) and totally free for commercial and non-commercial use.
 
-> Please do **not** ask general questions in an issue. Issues are only to report bugs, request
-  enhancements, or request new features. For general questions and discussions, use the
-  [Pip Devs Forum](https://groups.google.com/forum/#!forum/pipdevs).
-
-It is important to note that for each release, the [ChangeLog](CHANGELOG.md) is a resource that will
-itemize all:
-
-- Bug Fixes
-- New Features
-- Breaking Changes
-   
-## <a name="building"></a> Building
-
-Developers can easily build the project using NPM and gulp.
-
-* [Builds - Under the Hood](docs/guides/BUILD.md)
-
-First install or update your local project's **npm** tools:
-
-```bash
-# First install all the NPM tools:
-npm install
-
-# Or update
-npm update
-```
-
-Then run the **gulp** tasks:
-
-```bash
-# To clean '/build' and '/dist' directories
-gulp clean
-
-# To build distribution files in the `/dist` directory
-gulp build
-
-# To launch samples (build will open samples/index page in web browser)
-gulp launch
-```
-
-For more details on how the build process works and additional commands (available for testing and
-debugging) developers should read the [Build Instructions](docs/guides/BUILD.md).
-
-## <a name="installing"></a> Installing Build (Distribution Files)
-
-#### NPM
-
-Core services have dependency on 3rd party libraries included into pip-webui-lib library.
-Also the entire Pip WebUI framework is packaged into pip-webui library.
-
-Change to your project's root directory.
-
-```bash
-# To install only core services with dependencies.
-npm install git+ssh://git@github.com:pip-core/pip-webui-lib.git
-npm install git+ssh://git@github.com:pip-core/pip-webui-core.git
-npm install git+ssh://git@github.com:pip-core/pip-webui-rest.git
-
-# To install the entire pip-webui library
-npm install git+ssh://git@github.com:pip-core/pip-webui.git
-```

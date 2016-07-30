@@ -2,7 +2,7 @@
     "name": "pip-webui-rest",
     "version": "1.0.0",
     "author": "Digital Living Software Corp. <www.digitallivingsoftware.com>",
-    "description": "REST API to Pip.Services Platform",
+    "description": "REST API to Pip.WebUI",
     "contributors": [
         {
             "name": "Sergey Seroukhov",
@@ -28,12 +28,6 @@
     "noAnalyze": true,
     "license": "MIT",
     "private": false,
-    "scripts": {
-        "build": "gulp build",
-        "lint": "gulp lint",
-        "samples": "gulp launch",
-        "test": "karma start"
-    },
     "dependencies": {},
     "devDependencies": {
         "pip-webui-tasks": "git+https://github.com/pip-webui/pip-webui-tasks.git"

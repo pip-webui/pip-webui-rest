@@ -1,0 +1,42 @@
+{
+  "name": "pip-webui-rest",
+  "version": "1.0.0",
+  "description": "REST API and Data Models for Pip.WebUI",
+  "main": "",
+  "authors": [
+      {
+          "name": "Sergey Seroukhov",
+          "email": "seroukhov@gmail.com"
+      },
+      {
+          "name": "Anastas Fonotov",
+          "email": "anastasf@gmail.com"
+      },
+      {
+          "name": "Mark Zontak",
+          "email": "mark@zontak.me"
+      }
+  ],
+  "license": "MIT",
+  "keywords": [
+    "pip",
+    "webui",
+    "framework",
+    "controls",
+    "css",
+    "styles"
+  ],
+  "homepage": "https://github.com/pip-webui/pip-webui-rest",
+  "ignore": [
+    ".gitignore",
+    "node_modules",
+    "bower_components",
+    "src",
+    "tests",
+    "samples",
+    "scripts",
+    "build.*",
+    "gulpfile.js",
+    "karma.conf.js"
+  ]
+}

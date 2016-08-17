@@ -3558,11 +3558,11 @@
                 partyId: pipRest.partyId,
 
                 readUsers: function (params, transaction, successCallback, errorCallback) {
-                    pipRest.users().page(
+                    return pipRest.users().page(
                         {
                             party_id: pipRest.partyId($stateParams),
                             paging: 1,
-                            skip: params.start,
+                            skip: params.start || params.item.skip || 0,
                             search: params.item.search ,
                             active: params.item.active,
                             paid: params.item.paid,
@@ -3576,6 +3576,14 @@
                             errorCallback(error);
                         }
                     );
+                },
+
+                readUser: function (params, successCallback, errorCallback) {
+                    params.resource = 'users';
+                    params.item = params.item || {};
+                    params.item.party_id = pipRest.partyId($stateParams);
+                    params.item.id = params.item.id || $stateParams.id;
+                    return pipDataModel.readOne(params, successCallback, errorCallback);
                 },
                 
                 updateUser: function (item, transaction, successCallback, errorCallback) {

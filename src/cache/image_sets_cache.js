@@ -8,7 +8,7 @@
 (function () {
     'use strict';
 
-    var thisModule = angular.module('pipImageSetsCache', ['pipImageSetData']);
+    var thisModule = angular.module('pipImageSetsCache', ['pipImageSetsData']);
 
     thisModule.service('pipImageSetsCache',
         function (pipEnums, pipDataCache, pipTagsCache) {

@@ -45,14 +45,16 @@
 
                     params.skipTransactionBegin = true;
                     params.skipTransactionEnd = false;
+                    
+                    params.item = params.item || {};
+                    params.item.skip = params.item.skip || 0;
                     params.item.search = $stateParams.search || params.item.search;
                    // params.item.tags = $stateParams.search || params.item.search;
-
                     params.item.party_id = pipRest.partyId($stateParams);
                     params.item.take = PAGE_SIZE;
                     params.item.paging = 1;
 
-                    pipDataModel.page(
+                    return pipDataModel.page(
                         params,
                         successCallback,
                         errorCallback
@@ -63,7 +65,7 @@
                     params.resource = 'image_sets';
                     params.skipTransactionBegin = true;
                     params.skipTransactionEnd = false;
-                    pipDataModel.update(
+                    return pipDataModel.update(
                         params,
                         successCallback,
                         errorCallback

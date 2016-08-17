@@ -8,7 +8,7 @@
 (function () {
     'use strict';
     
-    var thisModule = angular.module('pipImageSetsData', ['pipRest', 'pipDataModel']);
+    var thisModule = angular.module('pipImageSetsData', ['pipRest', 'pipDataModel', 'pipImageSetsCache']);
 
     thisModule.provider('pipImageSetsData', function () {
         var PAGE_SIZE = 15;
@@ -35,7 +35,7 @@
         };
 
         // CRUD operations and other business methods
-        this.$get = function (pipRest, $stateParams, pipDataModel) {
+        this.$get = function (pipRest, $stateParams, pipDataModel, pipImageSetsCache) {
 
             return {
                 partyId: pipRest.partyId,
@@ -61,6 +61,14 @@
                     );
                 },
 
+                readImageSet: function (params, successCallback, errorCallback) {
+                    params.resource = 'image_sets';
+                    params.item = params.item || {};
+                    params.item.party_id = pipRest.partyId($stateParams);
+                    params.item.id = params.item.id || $stateParams.id;
+                    return pipDataModel.readOne(params, pipImageSetsCache.onImageSetUpdate(params, successCallback), errorCallback);
+                },
+
                 updateImageSet: function (params, successCallback, errorCallback) {
                     params.resource = 'image_sets';
                     params.skipTransactionBegin = true;
@@ -78,7 +86,7 @@
                     params.skipTransactionEnd = false;
                     pipDataModel.create(
                         params,
-                        successCallback,
+                        pipImageSetsCache.onImageSetCreate(params, successCallback),
                         errorCallback
                     );
                 },
@@ -91,7 +99,7 @@
                         params.skipTransactionEnd = false;
                         pipDataModel.create(
                             params,
-                            successCallback,
+                            pipImageSetsCache.onImageSetCreate(params, successCallback),
                             errorCallback
                         );
                     });

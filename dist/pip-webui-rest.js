@@ -394,6 +394,60 @@
 
 
 /**
+ * @file ImageSets data cache
+ * @copyright Digital Living Software Corp. 2014-2016
+ */
+
+/* global angular */
+
+(function () {
+    'use strict';
+
+    var thisModule = angular.module('pipImageSetsCache', ['pipImageSetData']);
+
+    thisModule.service('pipImageSetsCache',
+        ['pipEnums', 'pipDataCache', 'pipTagsCache', function (pipEnums, pipDataCache, pipTagsCache) {
+
+            return {
+                readImageSets: readImageSets,
+                onImageSetCreate: onImageSetCreate,
+                onImageSetUpdate: onImageSetUpdate,
+                onImageSetDelete: onImageSetDelete                
+            };
+
+            function readImageSets(params, successCallback, errorCallback) {
+                params = params || {};
+                params.resource = 'image_sets';
+                params.item = params.item || {};
+
+                return pipDataCache.retrieveOrLoad(params, successCallback, errorCallback);
+            };
+            
+            function onImageSetCreate(params, successCallback) {
+                return pipDataCache.addDecorator(
+                    'image_sets', params,
+                    pipTagsCache.tagsUpdateDecorator(params, successCallback)
+                );
+            };
+
+            function onImageSetUpdate(params, successCallback) {
+                return pipDataCache.updateDecorator(
+                    'image_sets', params,
+                    pipTagsCache.tagsUpdateDecorator(params, successCallback)
+                );
+            };
+
+            function onImageSetDelete(params, successCallback) {
+                return pipDataCache.removeDecorator('image_sets', params, successCallback);
+            };
+                        
+        }]
+    );
+
+})();
+
+
+/**
  * @file Session data cache
  * @copyright Digital Living Software Corp. 2014-2016
  */
@@ -3003,7 +3057,7 @@
 (function () {
     'use strict';
     
-    var thisModule = angular.module('pipImageSetsData', ['pipRest', 'pipDataModel']);
+    var thisModule = angular.module('pipImageSetsData', ['pipRest', 'pipDataModel', 'pipImageSetsCache']);
 
     thisModule.provider('pipImageSetsData', function () {
         var PAGE_SIZE = 15;
@@ -3030,7 +3084,7 @@
         };
 
         // CRUD operations and other business methods
-        this.$get = ['pipRest', '$stateParams', 'pipDataModel', function (pipRest, $stateParams, pipDataModel) {
+        this.$get = ['pipRest', '$stateParams', 'pipDataModel', 'pipImageSetsCache', function (pipRest, $stateParams, pipDataModel, pipImageSetsCache) {
 
             return {
                 partyId: pipRest.partyId,
@@ -3056,6 +3110,14 @@
                     );
                 },
 
+                readImageSet: function (params, successCallback, errorCallback) {
+                    params.resource = 'image_sets';
+                    params.item = params.item || {};
+                    params.item.party_id = pipRest.partyId($stateParams);
+                    params.item.id = params.item.id || $stateParams.id;
+                    return pipDataModel.readOne(params, pipImageSetsCache.onImageSetUpdate(params, successCallback), errorCallback);
+                },
+
                 updateImageSet: function (params, successCallback, errorCallback) {
                     params.resource = 'image_sets';
                     params.skipTransactionBegin = true;
@@ -3073,7 +3135,7 @@
                     params.skipTransactionEnd = false;
                     pipDataModel.create(
                         params,
-                        successCallback,
+                        pipImageSetsCache.onImageSetCreate(params, successCallback),
                         errorCallback
                     );
                 },
@@ -3086,7 +3148,7 @@
                         params.skipTransactionEnd = false;
                         pipDataModel.create(
                             params,
-                            successCallback,
+                            pipImageSetsCache.onImageSetCreate(params, successCallback),
                             errorCallback
                         );
                     });

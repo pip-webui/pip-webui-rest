@@ -44,7 +44,7 @@
             };
 
         // CRUD operations and other business methods
-        this.$get = function (pipRest, $stateParams) {   
+        this.$get = function (pipRest, $stateParams, pipDataModel) {   
             return {
                 partyId: pipRest.partyId,
 

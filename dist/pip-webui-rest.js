@@ -3214,7 +3214,7 @@
         this.readSessionsUserResolver = /* @ngInject */ readSessionsUserResolver;
         this.readSessionIdResolver = /* @ngInject */ readSessionIdResolver;
 
-        this.$get = ['$rootScope', '$stateParams', 'pipRest', 'pipDataModel', 'pipSessionsCache', function($rootScope, $stateParams, pipRest, pipDataModel, pipSessionsCache) {
+        this.$get = ['$rootScope', '$stateParams', 'pipRest', 'pipDataModel', 'pipSessionCache', function($rootScope, $stateParams, pipRest, pipDataModel, pipSessionCache) {
             return {
                 getSessionId: getSessionId,
                 removeSession: removeSession,
@@ -3223,7 +3223,7 @@
                     params.item = params.item || {};
                     params.item.party_id = $stateParams.id;
                     params.party_id = $stateParams.id;
-                    return  pipSessionsCache.readSessions(params, successCallback, errorCallback);
+                    return  pipSessionCache.readSessions(params, successCallback, errorCallback);
 
                 }
             };

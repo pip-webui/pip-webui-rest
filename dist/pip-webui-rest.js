@@ -477,10 +477,18 @@
                 readConnection: readConnection,
 
                 readSettings: readSettings,
-                onSettingsUpdate: onSettingsUpdate
+                onSettingsUpdate: onSettingsUpdate,
+
+                readSessions: readSessions
             };
             //-------------
 
+            function readSessions(params, successCallback, errorCallback) {
+                params = params || {};
+
+                return pipDataCache.retrieveOrLoad(params, successCallback, errorCallback);
+            };
+            
             function init(event, data) {
                 if (data == null)
                     throw new Error('Unexpected error: issues in openning session');
@@ -3206,7 +3214,7 @@
         this.readSessionsUserResolver = /* @ngInject */ readSessionsUserResolver;
         this.readSessionIdResolver = /* @ngInject */ readSessionIdResolver;
 
-        this.$get = ['$rootScope', '$stateParams', 'pipRest', 'pipDataModel', function($rootScope, $stateParams, pipRest, pipDataModel) {
+        this.$get = ['$rootScope', '$stateParams', 'pipRest', 'pipDataModel', 'pipSessionsCache', function($rootScope, $stateParams, pipRest, pipDataModel, pipSessionsCache) {
             return {
                 getSessionId: getSessionId,
                 removeSession: removeSession,
@@ -3215,7 +3223,7 @@
                     params.item = params.item || {};
                     params.item.party_id = $stateParams.id;
                     params.party_id = $stateParams.id;
-                    return pipDataModel.readOne(params, successCallback, errorCallback);
+                    return  pipSessionsCache.readSessions(params, successCallback, errorCallback);
 
                 }
             };

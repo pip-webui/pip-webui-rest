@@ -28,10 +28,18 @@
                 readConnection: readConnection,
 
                 readSettings: readSettings,
-                onSettingsUpdate: onSettingsUpdate
+                onSettingsUpdate: onSettingsUpdate,
+
+                readSessions: readSessions
             };
             //-------------
 
+            function readSessions(params, successCallback, errorCallback) {
+                params = params || {};
+
+                return pipDataCache.retrieveOrLoad(params, successCallback, errorCallback);
+            };
+            
             function init(event, data) {
                 if (data == null)
                     throw new Error('Unexpected error: issues in openning session');

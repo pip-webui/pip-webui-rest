@@ -340,6 +340,60 @@
 
 
 /**
+ * @file Feedbacks data cache
+ * @copyright Digital Living Software Corp. 2014-2016
+ */
+
+/* global angular */
+
+(function () {
+    'use strict';
+
+    var thisModule = angular.module('pipFeedbacksCache', ['pipFeedbacksData']);
+
+    thisModule.service('pipFeedbacksCache',
+        ['pipEnums', 'pipDataCache', 'pipTagsCache', function (pipEnums, pipDataCache, pipTagsCache) {
+
+            return {
+                readFeedbacks: readFeedbacks,
+                onFeedbackCreate: onFeedbackCreate,
+                onFeedbackUpdate: onFeedbackUpdate,
+                onFeedbackDelete: onFeedbackDelete                
+            };
+
+            function readFeedbacks(params, successCallback, errorCallback) {
+                params = params || {};
+                params.resource = 'feedback';
+                params.item = params.item || {};
+
+                return pipDataCache.retrieveOrLoad(params, successCallback, errorCallback);
+            };
+            
+            function onFeedbackCreate(params, successCallback) {
+                return pipDataCache.addDecorator(
+                    'feedback', params,
+                    pipTagsCache.tagsUpdateDecorator(params, successCallback)
+                );
+            };
+
+            function onFeedbackUpdate(params, successCallback) {
+                return pipDataCache.updateDecorator(
+                    'feedback', params,
+                    pipTagsCache.tagsUpdateDecorator(params, successCallback)
+                );
+            };
+
+            function onFeedbackDelete(params, successCallback) {
+                return pipDataCache.removeDecorator('feedback', params, successCallback);
+            };
+                        
+        }]
+    );
+
+})();
+
+
+/**
  * @file Guides data cache
  * @copyright Digital Living Software Corp. 2014-2016
  */
@@ -2871,7 +2925,7 @@
 (function () {
     'use strict';
 
-    var thisModule = angular.module('pipFeedbacksData', ['pipRest', 'pipDataModel']);
+    var thisModule = angular.module('pipFeedbacksData', ['pipRest', 'pipDataModel', 'pipFeedbacksCache']);
 
     thisModule.provider('pipFeedbacksData', function() {
 
@@ -2889,13 +2943,23 @@
             }];
         };
 
-        this.$get = ['$stateParams', 'pipRest', 'pipDataModel', function($stateParams, pipRest, pipDataModel) {
+        this.$get = ['$stateParams', 'pipRest', 'pipDataModel', 'pipFeedbacksCache', function($stateParams, pipRest, pipDataModel, pipFeedbacksCache) {
             return {
 
                 sendFeedback: function(params, successCallback, errorCallback) {
                     params.resource = 'feedbacks';
                     pipDataModel.create(params, successCallback, errorCallback);
                 },
+
+                readFeedbacks: function (params, successCallback, errorCallback) {
+                    params.resource = 'feedbacks';
+                    params.item = params.item || {};
+                    params.item.search = $stateParams.search;
+                    params.item.tags = $stateParams.search;
+                    params.item.party_id = pipRest.partyId($stateParams);
+                    return pipFeedbacksCache.readFeedbacks(params, successCallback, errorCallback);
+                },
+
 
                 createFeedbackWithFiles: function(params, successCallback, errorCallback) {
                     params.skipTransactionEnd = true;

@@ -8,7 +8,7 @@
 (function () {
     'use strict';
 
-    var thisModule = angular.module('pipFeedbacksData', ['pipRest', 'pipDataModel']);
+    var thisModule = angular.module('pipFeedbacksData', ['pipRest', 'pipDataModel', 'pipFeedbacksCache']);
 
     thisModule.provider('pipFeedbacksData', function() {
 
@@ -26,13 +26,23 @@
             };
         };
 
-        this.$get = function($stateParams, pipRest, pipDataModel) {
+        this.$get = function($stateParams, pipRest, pipDataModel, pipFeedbacksCache) {
             return {
 
                 sendFeedback: function(params, successCallback, errorCallback) {
                     params.resource = 'feedbacks';
                     pipDataModel.create(params, successCallback, errorCallback);
                 },
+
+                readFeedbacks: function (params, successCallback, errorCallback) {
+                    params.resource = 'feedbacks';
+                    params.item = params.item || {};
+                    params.item.search = $stateParams.search;
+                    params.item.tags = $stateParams.search;
+                    params.item.party_id = pipRest.partyId($stateParams);
+                    return pipFeedbacksCache.readFeedbacks(params, successCallback, errorCallback);
+                },
+
 
                 createFeedbackWithFiles: function(params, successCallback, errorCallback) {
                     params.skipTransactionEnd = true;

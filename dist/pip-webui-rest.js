@@ -363,7 +363,7 @@
 
             function readFeedbacks(params, successCallback, errorCallback) {
                 params = params || {};
-                params.resource = 'feedback';
+                params.resource = 'feedbacks';
                 params.item = params.item || {};
 
                 return pipDataCache.retrieveOrLoad(params, successCallback, errorCallback);
@@ -371,20 +371,20 @@
             
             function onFeedbackCreate(params, successCallback) {
                 return pipDataCache.addDecorator(
-                    'feedback', params,
+                    'feedbacks', params,
                     pipTagsCache.tagsUpdateDecorator(params, successCallback)
                 );
             };
 
             function onFeedbackUpdate(params, successCallback) {
                 return pipDataCache.updateDecorator(
-                    'feedback', params,
+                    'feedbacks', params,
                     pipTagsCache.tagsUpdateDecorator(params, successCallback)
                 );
             };
 
             function onFeedbackDelete(params, successCallback) {
-                return pipDataCache.removeDecorator('feedback', params, successCallback);
+                return pipDataCache.removeDecorator('feedbacks', params, successCallback);
             };
                         
         }]
@@ -2954,9 +2954,8 @@
                 readFeedbacks: function (params, successCallback, errorCallback) {
                     params.resource = 'feedbacks';
                     params.item = params.item || {};
-                    params.item.search = $stateParams.search;
-                    params.item.tags = $stateParams.search;
                     params.item.party_id = pipRest.partyId($stateParams);
+                    
                     return pipFeedbacksCache.readFeedbacks(params, successCallback, errorCallback);
                 },
 

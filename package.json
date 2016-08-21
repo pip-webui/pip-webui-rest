@@ -1,6 +1,6 @@
 {
     "name": "pip-webui-rest",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "author": "Digital Living Software Corp. <www.digitallivingsoftware.com>",
     "description": "REST API and Data Models for Pip.WebUI",
     "contributors": [

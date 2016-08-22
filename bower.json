@@ -1,6 +1,6 @@
 {
     "name": "pip-webui-rest",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "description": "REST API and Data Models for Pip.WebUI",
     "main": "",
     "authors": [

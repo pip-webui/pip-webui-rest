@@ -11,16 +11,17 @@ We understand, that demanding from framework users to implement specific REST AP
 * Secure application routing
 * Data models and local cache
 
-For more information please, visit [User's guide](doc/UsersGuide.md) and [REST protocol](doc/RestProtocol.md)
+For more information please, visit [User's guide](https://github.com/pip-webui/pip-webui-rest/blob/master/doc/UsersGuide.md) 
+and [REST protocol](https://github.com/pip-webui/pip-webui-rest/blob/master/doc/RestProtocol.md)
 
 ## Learn more about the module
 
-- [User's guide](doc/UsersGuide.md)
-- [REST protocol](doc/RestProtocol.md)
+- [User's guide](https://github.com/pip-webui/pip-webui-rest/blob/master/doc/UsersGuide.md)
+- [REST protocol](https://github.com/pip-webui/pip-webui-rest/blob/master/doc/RestProtocol.md)
 - [Online samples](http://webui.pipdevs.com/pip-webui-rest/index.html)
 - [API reference](http://webui-api.pipdevs.com/pip-webui-rest/index.html)
-- [Developer's guide](doc/DevelopersGuide.md)
-- [Changelog](CHANGELOG.md)
+- [Developer's guide](https://github.com/pip-webui/pip-webui-rest/blob/master/doc/DevelopersGuide.md)
+- [Changelog](https://github.com/pip-webui/pip-webui-rest/blob/master/CHANGELOG.md)
 - [Pip.WebUI project website](http://www.pipwebui.org)
 - [Pip.WebUI project wiki](https://github.com/pip-webui/pip-webui/wiki)
 - [Pip.WebUI discussion forum](https://groups.google.com/forum/#!forum/pip-webui)

@@ -11,21 +11,8 @@
     angular.module('pipData', [
 		'pipDataModel',
 		'pipDataCache',
-        
-        'pipUsersData',
-        'pipSettingsData',
+       
         'pipSessionData',
-        'pipTagsData',
-
-        'pipAnnouncesData',
-        'pipFeedbacksData',
-        'pipImageSetsData',
-
-        'pipTipsCache',
-        'pipTipsData',
-
-        'pipGuidesCache',
-        'pipGuidesData'
     ]);
     
 })();

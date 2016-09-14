@@ -27,8 +27,7 @@
         };
 
         // Set default API version
-        $httpProvider.defaults.headers.common['api-version'] = '1.0';
-
+        //$httpProvider.defaults.headers.common['api-version'] = '1.0';
 
         this.version = function (newVersion) {
             if (newVersion)
@@ -48,7 +47,7 @@
             return newServerUrl;
         };
 
-        this.$get = function ($rootScope, $http, $resource) {
+        this.$get = function ($rootScope, $http, $resource, $stateParams) {
 
             function createResource(url, path, paramDefaults, actions) {
                 url = url || serverUrl;
@@ -122,8 +121,13 @@
                 },
 
                 // Used in routing
-                partyId: function ($stateParams) {
-                    return $stateParams.party_id || $http.defaults.headers.common['user-id'];
+                partyId: function () {
+                    if($stateParams) {
+                        return $stateParams.party_id || $http.defaults.headers.common['user-id'];
+                    }
+                    else {
+                        return $http.defaults.headers.common['user-id'];
+                    }                    
                 },
 
                 about: function (url) {

@@ -14,7 +14,7 @@
     );
 
     thisModule.controller('SettingsCacheController',
-        function ($scope, $rootScope, pipTestDataSet, pipSessionCache, pipSettingsData, pipSession) {
+        function ($scope, $rootScope, pipTestDataSet, pipSessionCache, pipDataSettings, pipSession) {
 
             $scope.titleArray = ['', 'Settings loaded', 'Actual data', 'Settings1', 'Settings2', 'Cash cleared'];
 
@@ -123,7 +123,7 @@
 
             function saveSettings() {
                 $scope.processing = true;
-                pipSettingsData.saveSettings(
+                pipDataSettings.saveSettings(
                     $scope.settings,
                     null,
                     function (setting) {

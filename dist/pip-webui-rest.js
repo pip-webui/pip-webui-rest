@@ -1537,7 +1537,7 @@
         };
 
         // Set default API version
-        $httpProvider.defaults.headers.common['api-version'] = '1.0';
+        //$httpProvider.defaults.headers.common['api-version'] = '1.0';
 
         this.version = function (newVersion) {
             if (newVersion)

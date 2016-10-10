@@ -1,7 +1,7 @@
 var gulp = require('gulp');
 
 // Add standard tasks    
-require('pip-webui-tasks').all();
+require('pip-webui-tasks').all(gulp);
 
 // Define build tasks        
 gulp.task('build', ['build-dev', 'build-prod']);
